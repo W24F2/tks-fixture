@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fixture Details - Sports Fixtures Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background-color: #007bff;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .dashboard {
+            background-color: white;
+            border-radius: 5px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .fixture-detail {
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .score {
+            font-size: 1.5em;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .status {
+            font-weight: bold;
+            text-align: center;
+        }
+        .refresh-btn {
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            float: right;
+        }
+        .refresh-btn:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Fixture Details</h1>
+        </header>
+
+        <div class="dashboard">
+            {% if fixture %}
+                <div class="fixture-detail">
+                    <h2>{{ fixture[1] }}</h2>
+                    <p><strong>Home Team:</strong> {{ fixture[2] }}</p>
+                    <p><strong>Away Team:</strong> {{ fixture[3] }}</p>
+                    <div class="score">
+                        <p>{{ fixture[4] }} - {{ fixture[5] }}</p>
+                    </div>
+                    <p><strong>Status:</strong> {{ fixture[6] }}</p>
+                    <p><strong>Start Time:</strong> {{ fixture[7] }}</p>
+                    <p><strong>Venue:</strong> {{ fixture[8] }}</p>
+                    <p><strong>Created At:</strong> {{ fixture[9] }}</p>
+                    <p><strong>Updated At:</strong> {{ fixture[10] }}</p>
+                </div>
+            {% else %}
+                <p>Fixture not found.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

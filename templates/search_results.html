@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results - Sports Fixtures Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background-color: #007bff;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .dashboard {
+            background-color: white;
+            border-radius: 5px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .fixture {
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 15px;
+            background-color: #f8f9fa;
+        }
+        .fixture:hover {
+            background-color: #e9ecef;
+            cursor: pointer;
+        }
+        .status {
+            font-weight: bold;
+        }
+        .score {
+            font-size: 1.2em;
+            text-align: center;
+        }
+        .team {
+            text-align: center;
+        }
+        .search-box {
+            margin-bottom: 20px;
+        }
+        .search-box input {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 300px;
+        }
+        .refresh-btn {
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            float: right;
+        }
+        .refresh-btn:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Search Results</h1>
+        </header>
+
+        <div class="search-box">
+            <form action="/search" method="get">
+                <input type="text" name="q" placeholder="Search fixtures..." value="{{ request.args.get('q', '') }}">
+                <button type="submit">Search</button>
+            </form>
+        </div>
+
+        <div class="dashboard">
+            <h2>Search Results for "{{ query }}"</h2>
+            {% if fixtures %}
+                {% for fixture in fixtures %}
+                    <div class="fixture">
+                        <div class="score">
+                            <h3>{{ fixture[1] }}</h3>
+                            <p>{{ fixture[2] }} vs {{ fixture[3] }}</p>
+                            <p>{{ fixture[4] }} - {{ fixture[5] }}</p>
+                        </div>
+                        <p>Status: {{ fixture[6] }}</p>
+                        <p>Start Time: {{ fixture[7] }}</p>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>No fixtures found matching your search.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
