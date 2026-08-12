@@ -1,4 +1,5 @@
 // Default JavaScript for Sports Fixtures Dashboard
+
 function refreshFixtures() {
     fetch('/refresh')
         .then(response => response.json())

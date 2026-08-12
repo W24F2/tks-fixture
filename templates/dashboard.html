@@ -1,108 +1,228 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sports Fixtures Dashboard</title>
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block head %}
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f8f9fa;
-            color: #333;
+        .dashboard-header {
+            margin-bottom: 2rem;
         }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
+
+        .dashboard-title {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
         }
-        header {
-            background-color: #007bff;
-            color: white;
-            padding: 15px 20px;
-            border-radius: 5px;
-            margin-bottom: 20px;
+
+        .dashboard-subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
         }
-        .dashboard {
-            background-color: white;
-            border-radius: 5px;
-            padding: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
         }
-        .fixture {
-            border: 1px solid #dee2e6;
-            border-radius: 5px;
-            padding: 15px;
-            margin-bottom: 15px;
-            background-color: #f8f9fa;
-        }
-        .fixture:hover {
-            background-color: #e9ecef;
-            cursor: pointer;
-        }
-        .status {
-            font-weight: bold;
-        }
-        .score {
-            font-size: 1.2em;
+
+        .stat-card {
+            background-color: var(--surface);
+            border-radius: 8px;
+            padding: 1.5rem;
             text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
         }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin: 0.5rem 0;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .fixtures-section {
+            margin-bottom: 2rem;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .section-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .fixture-grid {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .fixture-card {
+            background-color: var(--surface);
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 1px solid var(--border);
+        }
+
+        .fixture-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+            border-color: var(--accent);
+        }
+
+        .fixture-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .fixture-competition {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .fixture-status {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .status-scheduled {
+            background-color: #6477d6;
+            color: white;
+        }
+
+        .status-live {
+            background-color: var(--danger);
+            color: white;
+        }
+
+        .status-completed {
+            background-color: var(--success);
+            color: white;
+        }
+
+        .fixture-time {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .fixture-teams {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
         .team {
             text-align: center;
+            flex: 1;
         }
-        .search-box {
-            margin-bottom: 20px;
+
+        .team-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
         }
-        .search-box input {
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            width: 300px;
+
+        .team-score {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
         }
-        .refresh-btn {
-            background-color: #28a745;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            float: right;
-        }
-        .refresh-btn:hover {
-            background-color: #218838;
+
+        .fixture-venue {
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
         }
     </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Sports Fixtures Dashboard</h1>
-        </header>
+{% endblock %}
 
-        <div class="dashboard">
-            <h2>Upcoming Fixtures</h2>
-            <div class="search-box">
-                <form action="/search" method="get">
-                    <input type="text" name="q" placeholder="Search fixtures..." value="{{ request.args.get('q', '') }}">
-                    <button type="submit">Search</button>
-                </form>
+{% block content %}
+    <!-- Dashboard Header -->
+    <div class="dashboard-header">
+        <h1 class="dashboard-title">Sports Fixtures Dashboard</h1>
+        <p class="dashboard-subtitle">Real-time sports fixtures and results</p>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">24</div>
+            <div class="stat-label">Today's Fixtures</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">3</div>
+            <div class="stat-label">Live Matches</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">18</div>
+            <div class="stat-label">Upcoming</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">3</div>
+            <div class="stat-label">Completed</div>
+        </div>
+    </div>
+
+    <!-- Fixtures Section -->
+    <div class="fixtures-section">
+        <div class="section-header">
+            <div>
+                <h2 class="section-title">Today's Fixtures</h2>
+                <p class="section-subtitle">All fixtures for today</p>
             </div>
-            <div class="refresh-btn">
-                <a href="/refresh">Refresh</a>
-            </div>
+        </div>
+        <div class="fixture-grid">
+            <!-- Example fixture cards - these would be dynamically generated -->
             {% for fixture in fixtures %}
-                <div class="fixture">
-                    <div class="score">
-                        <h3>{{ fixture[1] }}</h3>
-                        <p>{{ fixture[2] }} vs {{ fixture[3] }}</p>
-                        <p>{{ fixture[4] }} - {{ fixture[5] }}</p>
-                    </div>
-                    <p>Status: {{ fixture[6] }}</p>
-                    <p>Start Time: {{ fixture[7] }}</p>
+            <div class="fixture-card">
+                <div class="fixture-header">
+                    <div class="fixture-competition">{{ fixture[1] }}</div>
+                    <span class="fixture-status status-scheduled">SCHEDULED</span>
                 </div>
+                <div class="fixture-time">19:30</div>
+                <div class="fixture-teams">
+                    <div class="team">
+                        <div class="team-name">{{ fixture[2] }}</div>
+                        <div class="team-score">-</div>
+                    </div>
+                    <div class="team">vs</div>
+                    <div class="team">
+                        <div class="team-name">{{ fixture[3] }}</div>
+                        <div class="team-score">-</div>
+                    </div>
+                </div>
+                <div class="fixture-venue">{{ fixture[7] }}</div>
+            </div>
             {% endfor %}
         </div>
     </div>
-</body>
-</html>
+{% endblock %}

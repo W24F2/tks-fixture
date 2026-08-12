@@ -1,24 +1,49 @@
+import time
 from apscheduler.schedulers.background import BackgroundScheduler
-import os
-from scraper import fetch_xml
-from xml_parser import parse_xml
+from scraper import scrape_fixtures
+from database import init_db, get_fixtures
+import logging
 
-def schedule_background_tasks():
-    # Create a scheduler
+# Initialize database
+init_db()
+
+def refresh_fixtures():
+    """Refresh fixtures from the XML feed."""
+    try:
+        print("Refreshing fixtures...")
+        fixtures = scrape_fixtures()
+
+        if fixtures:
+            print(f"Successfully refreshed {len(fixtures)} fixtures")
+        else:
+            print("No fixtures to refresh")
+
+        return fixtures
+    except Exception as e:
+        print(f"Error refreshing fixtures: {e}")
+        return []
+
+def start_scheduler():
+    """Start the scheduler for automatic refresh."""
     scheduler = BackgroundScheduler()
 
-    # Get polling interval from environment variable
-    polling_interval = int(os.getenv('POLL_INTERVAL_SECONDS', 60))
-
-    # Add job to fetch and parse XML periodically
-    scheduler.add_job(fetch_and_parse_xml, 'interval', seconds=polling_interval)
+    # Add job to refresh every 30 minutes
+    scheduler.add_job(refresh_fixtures, 'interval', minutes=30)
 
     # Start the scheduler
     scheduler.start()
 
-def fetch_and_parse_xml():
-    # Fetch XML content
-    xml_content = fetch_xml()
+    print("Scheduler started - refreshing every 30 minutes")
 
-    # Parse XML content
-    parse_xml(xml_content)
+    try:
+        # Keep the scheduler running
+        while True:
+            time.sleep(1)
+    except (KeyboardInterrupt, SystemExit):
+        scheduler.shutdown()
+        print("Scheduler shutdown")
+
+    return scheduler
+
+if __name__ == "__main__":
+    start_scheduler()

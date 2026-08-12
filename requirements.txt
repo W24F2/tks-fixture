@@ -1,6 +1,3 @@
 flask
 python-dotenv
-lxml
 httpx
-apscheduler
-pytest

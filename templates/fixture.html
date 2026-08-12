@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Fixture Detail{% endblock %}
+
+{% block head %}
+    <style>
+        .fixture-detail {
+            margin-bottom: 2rem;
+        }
+
+        .fixture-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .fixture-competition {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .fixture-status {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .status-scheduled {
+            background-color: #6477d6;
+            color: white;
+        }
+
+        .status-live {
+            background-color: var(--danger);
+            color: white;
+        }
+
+        .status-completed {
+            background-color: var(--success);
+            color: white;
+        }
+
+        .fixture-time {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .fixture-teams {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .team {
+            text-align: center;
+            flex: 1;
+        }
+
+        .team-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .team-score {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .fixture-venue {
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .fixture-info {
+            margin-top: 1rem;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <!-- Fixture Detail -->
+    <div class="fixture-detail">
+        <div class="fixture-header">
+            <div class="fixture-competition">{{ fixture[1] }}</div>
+            <span class="fixture-status status-scheduled">SCHEDULED</span>
+        </div>
+        <div class="fixture-time">19:30</div>
+        <div class="fixture-teams">
+            <div class="team">
+                <div class="team-name">{{ fixture[2] }}</div>
+                <div class="team-score">-</div>
+            </div>
+            <div class="team">vs</div>
+            <div class="team">
+                <div class="team-name">{{ fixture[3] }}</div>
+                <div class="team-score">-</div>
+            </div>
+        </div>
+        <div class="fixture-venue">{{ fixture[7] }}</div>
+        <div class="fixture-info">
+            <div class="info-row">
+                <span>Referee:</span>
+                <span>John Smith</span>
+            </div>
+            <div class="info-row">
+                <span>Stadium:</span>
+                <span>Emirates Stadium</span>
+            </div>
+            <div class="info-row">
+                <span>Match Duration:</span>
+                <span>90 mins</span>
+            </div>
+            <div class="info-row">
+                <span>Attendance:</span>
+                <span>60,000</span>
+            </div>
+        </div>
+    </div>
+{% endblock %}
