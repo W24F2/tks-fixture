@@ -1,21 +1,42 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Sports Fixtures Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Sports Fixtures{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Using Inter font for a modern look -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons for a premium feel -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body>
-    <header>
-        <h1>Sports Fixtures Dashboard</h1>
-        <nav>
-            <a href="/">Dashboard</a>
-            <a href="/fixtures">All Fixtures</a>
-            <a href="/search">Search</a>
-        </nav>
-    </header>
+<body class="dark-theme">
+    <div class="liquid-glow"></div>
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="logo">Sports<span class="accent">Fetcher</span></a>
+            <div class="nav-actions">
+                <button id="refresh-btn" class="btn btn-secondary">
+                    <i data-lucide="refresh-cw" class="icon-sm"></i> Refresh Data
+                </button>
+            </div>
+        </div>
+    </nav>
 
-    <main>
+    <main class="container">
         {% block content %}{% endblock %}
     </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2026 Sports Fetcher. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+    </script>
 </body>
 </html>

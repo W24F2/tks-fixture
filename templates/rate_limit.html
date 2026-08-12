@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+{% extends "base.html" %}
+
+{% block title %}Too Many Requests{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-icon">
+        <i data-lucide="timer" style="width: 80px; height: 80px;"></i>
+    </div>
+    <h2 class="error-title">Slow Down!</h2>
+    <p class="error-message">You've made too many requests in a short period. Please wait a while before trying again.</p>
+    <a href="/" class="btn btn-secondary">
+        <i data-lucide="home" class="icon-sm"></i> Back to Dashboard
+    </a>
+</div>
+{% endblock %}

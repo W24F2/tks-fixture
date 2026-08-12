@@ -1,3 +1,0 @@
-"""
-Sports Fixtures Dashboard Package
-"""

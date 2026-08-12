@@ -1,51 +1,77 @@
-from flask import Flask, render_template, request
-from database import init_db, get_fixtures, search_fixtures
-from scraper import scrape_fixtures
+import os
+from flask import Flask, jsonify, render_template, request
+from database import create_app
+from models import db, Fixture
+from scraper import TrumbaScraper
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from dotenv import load_dotenv
 
-# Initialize database
-init_db()
+# Load environment variables from .env
+load_dotenv()
 
-app = Flask(__name__)
+app = create_app()
+
+# Rate limiting setup
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
+# Configuration
+TRUMBA_XML_URL = os.getenv('TRUMBA_XML_URL', "https://www.trumba.com/calendars/senior-fixtures.xml")
 
 @app.route('/')
-def dashboard():
-    """Render the main dashboard."""
-    fixtures = get_fixtures()
-    return render_template('dashboard.html', fixtures=fixtures)
+def index():
+    """Main dashboard view."""
+    fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
+    return render_template('index.html', fixtures=fixtures)
 
-@app.route('/fixtures')
-def fixtures_page():
-    """Render the fixtures page."""
-    fixtures = get_fixtures()
-    return render_template('fixtures.html', fixtures=fixtures)
+@app.route('/api/fixtures')
+def get_fixtures():
+    """API endpoint to get fixtures in JSON format."""
+    fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
+    return jsonify([f.to_dict() for f in fixtures])
 
-@app.route('/refresh')
-def refresh():
-    """Refresh the fixtures."""
+@app.route('/api/refresh', methods=['POST'])
+@limiter.limit("5 per hour")  # Restrict intensive scraping
+def refresh_data():
+    """
+    Endpoint to trigger the scraper.
+    """
+    auth_token = request.headers.get("X-Refresh-Token")
+    expected_token = os.getenv("REFRESH_TOKEN")
+
+    if expected_token and auth_token != expected_token:
+        return jsonify({"error": "Unauthorized"}), 401
+
     try:
-        # Force refresh by scraping new data
-        fixtures = scrape_fixtures()
-        return render_template('fixtures.html', fixtures=fixtures)
+        scraper = TrumbaScraper(TRUMBA_XML_URL)
+        new_count, updated_count = scraper.scrape()
+        return jsonify({
+            "status": "success",
+            "new_fixtures": new_count,
+            "updated_fixtures": updated_count
+        }), 200
     except Exception as e:
-        return f"Error refreshing: {e}"
+        app.logger.error(f"Scrape failed: {e}")
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/search')
-def search():
-    """Search fixtures."""
-    query = request.args.get('q', '')
-    results = search_fixtures(query)
-    return render_template('search_results.html', results=results, query=query)
+@app.route('/api/health')
+def health_check():
+    """Health check endpoint for monitoring."""
+    return jsonify({"status": "healthy"}), 200
 
-@app.route('/fixture/<int:id>')
-def fixture_detail(id):
-    """Render a specific fixture detail."""
-    # Get fixture by ID
-    from database import get_fixture_by_id
-    fixture = get_fixture_by_id(id)
-    if fixture:
-        return render_template('fixture.html', fixture=fixture)
-    else:
-        return "Fixture not found", 404
+# Custom Error Handlers
+@app.errorhandler(404)
+def not_found(e):
+    return render_template('404.html'), 404
 
-if __name__ == '__main__':
-    app.run(debug=True)
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return render_template('rate_limit.html'), 429
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)

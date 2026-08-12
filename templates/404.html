@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+{% extends "base.html" %}
+
+{% block title %}404 - Not Found{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-icon">
+        <i data-lucide="search-x" style="width: 80px; height: 80px;"></i>
+    </div>
+    <h2 class="error-title">Oops! Page Not Found</h2>
+    <p class="error-message">The page you're looking for doesn't exist or has been moved.</p>
+    <a href="/" class="btn btn-secondary">
+        <i data-lucide="home" class="icon-sm"></i> Back to Dashboard
+    </a>
+</div>
+{% endblock %}

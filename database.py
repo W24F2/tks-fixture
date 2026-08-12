@@ -1,71 +1,34 @@
-"""
-Database operations for sports fixtures
-"""
-import sqlite3
-from datetime import datetime
+import os
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from models import db
 
-def init_db():
-    """Initialize the database and create tables"""
-    conn = sqlite3.connect('data/sports.db')
-    cursor = conn.cursor()
+def create_app():
+    app = Flask(__name__)
 
-    # Create fixtures table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS fixtures (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            competition TEXT NOT NULL,
-            team1 TEXT NOT NULL,
-            team2 TEXT NOT NULL,
-            score1 INTEGER,
-            score2 INTEGER,
-            venue TEXT,
-            date_time TEXT NOT NULL,
-            status TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    # Database Configuration
+    # Priority: 1. DATABASE_URL from env, 2. local sqlite
+    database_url = os.getenv("DATABASE_URL", "sqlite:///sports_fixtures.db")
 
-    conn.commit()
-    conn.close()
+    # Handle sqlite prefix if needed (for some providers)
+    if database_url.startswith("sqlite:///"):
+        # Ensure it's a relative path for local dev
+        pass
+    elif database_url.startswith("postgres://"):
+        # Vercel/Heroku often use postgres:// but SQLAlchemy requires postgresql://
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
 
-def insert_fixtures(fixtures):
-    """Insert fixtures into the database"""
-    conn = sqlite3.connect('data/sports.db')
-    cursor = conn.cursor()
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key-12345")
 
-    for fixture in fixtures:
-        cursor.execute('''
-            INSERT OR REPLACE INTO fixtures
-            (competition, team1, team2, score1, score2, venue, date_time, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            fixture['competition'],
-            fixture['team1'],
-            fixture['team2'],
-            fixture['score1'],
-            fixture['score2'],
-            fixture['venue'],
-            fixture['date_time'],
-            fixture['status']
-        ))
+    db.init_app(app)
 
-    conn.commit()
-    conn.close()
+    with app.app_context():
+        db.create_all()
 
-def get_fixtures, search_fixtures()():
-    """Get all fixtures from the database"""
-    conn = sqlite3.connect('data/sports.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM fixtures ORDER BY date_time')
-    fixtures = cursor.fetchall()
-    conn.close()
-    return fixtures
+    return app
 
-def get_fixture_by_id(fixture_id):
-    """Get a specific fixture by ID"""
-    conn = sqlite3.connect('data/sports.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM fixtures WHERE id = ?', (fixture_id,))
-    fixture = cursor.fetchone()
-    conn.close()
-    return fixture
+if __name__ == "__main__":
+    app = create_app()
+    app.run(debug=True, port=5000)
