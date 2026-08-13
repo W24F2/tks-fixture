@@ -6,7 +6,7 @@
     <title>{% block title %}Sports Fixtures{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <!-- Using Inter font for a modern look -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Lucide Icons for a premium feel -->
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -15,6 +15,22 @@
     <nav class="navbar">
         <div class="container">
             <a href="/" class="logo">Sports<span class="accent">Fetcher</span></a>
+            <div class="navbar-right">
+                <div class="navbar-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Total:</span>
+                        <span id="stat-total" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Updated:</span>
+                        <span id="stat-updated" class="stat-value">Never</span>
+                    </div>
+                </div>
+                <a href="https://github.com/W24F2/tks-fixture" target="_blank" class="nav-github-link">
+                    <i data-lucide="github" class="icon-sm"></i>
+                    <span>GitHub</span>
+                </a>
+            </div>
         </div>
     </nav>
 
@@ -24,7 +40,7 @@
 
     <footer class="footer">
         <div class="container">
-            <p>&copy; 2026 Sports Fetcher. All rights reserved.</p>
+            <p>&copy; 2026 Sports Fetcher. Licensed under <a href="https://opensource.org/licenses/MIT" target="_blank" class="license-link">MIT License</a>.</p>
         </div>
     </footer>
 

@@ -1,0 +1,15 @@
+name: Trigger Vercel Scraper
+
+on:
+  schedule:
+    # This runs every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Allows you to run it manually for testing
+
+jobs:
+  ping-vercel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Vercel API
+        run: |
+          curl -X GET "https://tks-sport.vercel.app//api/cron/refresh?token=${{ secrets.CRON_SECRET }}"

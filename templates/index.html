@@ -1,31 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Sports Fixtures{% endblock %}
-
 {% block content %}
-<header class="dashboard-header">
-    <h1 class="main-title">Live Fixtures</h1>
-    <p class="subtitle">Stay updated with the latest sports schedules</p>
-</header>
-
 <div id="loading-overlay" class="hidden">
     <div class="spinner"></div>
     <p>Updating fixtures...</p>
-</div>
-
-<section class="stats-grid compact-stats">
-    <div class="stat-card">
-        <span class="stat-label">Total Fixtures</span>
-        <span id="stat-total" class="stat-value">0</span>
-    </div>
-    <div class="stat-card">
-        <span class="stat-label">Last Updated</span>
-        <span id="stat-updated" class="stat-value">Never</span>
-    </div>
-</section>
-
-<div class="disclaimer-container">
-    <p>Disclaimer: Information may not be accurate. Please check Kingsnet for the most up-to-date information.</p>
 </div>
 
 <div class="controls-container">
@@ -33,35 +11,38 @@
         <i data-lucide="search" class="search-icon"></i>
         <input type="text" id="search-input" placeholder="Search fixtures, teams, or locations..." class="search-input">
     </div>
-    <div class="filter-wrapper" id="filter-wrapper">
-        <!-- Filters will be populated dynamically -->
-    </div>
 </div>
 
-<div class="fixtures-container" id="fixtures-list">
-    {% if fixtures %}
-        {% for fixture in fixtures %}
-            <div class="fixture-card" data-sport="{{ fixture.sport|lower if fixture.sport else 'general' }}" data-title="{{ fixture.title|lower }}" data-location="{{ fixture.location|lower if fixture.location else '' }}">
-                <div class="fixture-header">
-                    <span class="fixture-sport">{{ fixture.sport or 'General' }}</span>
-                    <span class="fixture-status">Scheduled</span>
-                </div>
-                <div class="fixture-body">
-                    <h3 class="fixture-title">{{ fixture.title }}</h3>
-                    <div class="fixture-details">
-                        <p><i data-lucide="map-pin" class="icon-muted"></i> {{ fixture.location or 'TBD' }}</p>
-                        <p><i data-lucide="calendar" class="icon-muted"></i> {{ fixture.event_date }}</p>
-                        <p><i data-lucide="clock" class="icon-muted"></i> {{ fixture.event_time }}</p>
-                    </div>
-                    <div class="fixture-teams">
-                        <div class="team">
-                            <span class="team-name">{{ fixture.team or 'Home' }}</span>
+<div id="fixtures-list">
+    {% if grouped_fixtures %}
+        {% for date, fixtures in grouped_fixtures %}
+            <div class="date-section">
+                <h2 class="date-header">{{ date.strftime('%A, %B %d, %Y') }}</h2>
+                <div class="fixtures-container">
+                    {% for fixture in fixtures %}
+                        <div class="fixture-card" data-sport="{{ fixture.sport|lower if fixture.sport else 'general' }}" data-title="{{ fixture.title|lower }}" data-location="{{ fixture.location|lower if fixture.location else '' }}">
+                            <div class="fixture-header">
+                                <span class="fixture-sport">{{ fixture.sport or 'General' }}</span>
+                                <span class="fixture-status">Scheduled</span>
+                            </div>
+                            <div class="fixture-body">
+                                <h3 class="fixture-title">{{ fixture.title }}</h3>
+                                <div class="fixture-details">
+                                    <p><i data-lucide="map-pin" class="icon-muted"></i> {{ fixture.location or 'TBD' }}</p>
+                                    <p><i data-lucide="clock" class="icon-muted"></i> {{ fixture.event_time.strftime('%I:%M %p') if fixture.event_time else 'TBD' }}</p>
+                                </div>
+                                <div class="fixture-teams">
+                                    <div class="team">
+                                        <span class="team-name">{{ fixture.team or 'Home' }}</span>
+                                    </div>
+                                    <span class="vs">vs</span>
+                                    <div class="team">
+                                        <span class="team-name">{{ fixture.opposition or 'Away' }}</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <span class="vs">vs</span>
-                        <div class="team">
-                            <span class="team-name">{{ fixture.opposition or 'Away' }}</span>
-                        </div>
-                    </div>
+                    {% endfor %}
                 </div>
             </div>
         {% endfor %}
@@ -76,6 +57,11 @@
     {% endif %}
 </div>
 
-<div id="toast-container"></div>
+<div class="disclaimer-floating">
+    <div class="disclaimer-content">
+        <p>Information may not be accurate. Please check Kingsnet for the most up-to-date information.</p>
+    </div>
+</div>
 
+<div id="toast-container"></div>
 {% endblock %}
