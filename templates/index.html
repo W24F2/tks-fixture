@@ -4,7 +4,7 @@
 
 {% block content %}
 <header class="dashboard-header">
-    <h1>Live Fixtures</h1>
+    <h1 class="main-title">Live Fixtures</h1>
     <p class="subtitle">Stay updated with the latest sports schedules</p>
 </header>
 
@@ -13,7 +13,7 @@
     <p>Updating fixtures...</p>
 </div>
 
-<section class="stats-grid">
+<section class="stats-grid compact-stats">
     <div class="stat-card">
         <span class="stat-label">Total Fixtures</span>
         <span id="stat-total" class="stat-value">0</span>
@@ -24,10 +24,24 @@
     </div>
 </section>
 
-<div class="fixtures-container">
+<div class="disclaimer-container">
+    <p>Disclaimer: Information may not be accurate. Please check Kingsnet for the most up-to-date information.</p>
+</div>
+
+<div class="controls-container">
+    <div class="search-wrapper">
+        <i data-lucide="search" class="search-icon"></i>
+        <input type="text" id="search-input" placeholder="Search fixtures, teams, or locations..." class="search-input">
+    </div>
+    <div class="filter-wrapper" id="filter-wrapper">
+        <!-- Filters will be populated dynamically -->
+    </div>
+</div>
+
+<div class="fixtures-container" id="fixtures-list">
     {% if fixtures %}
         {% for fixture in fixtures %}
-            <div class="fixture-card">
+            <div class="fixture-card" data-sport="{{ fixture.sport|lower if fixture.sport else 'general' }}" data-title="{{ fixture.title|lower }}" data-location="{{ fixture.location|lower if fixture.location else '' }}">
                 <div class="fixture-header">
                     <span class="fixture-sport">{{ fixture.sport or 'General' }}</span>
                     <span class="fixture-status">Scheduled</span>
@@ -57,8 +71,11 @@
                 <i data-lucide="calendar-off" style="width: 64px; height: 64px;"></i>
             </div>
             <h2 class="empty-text">No fixtures found</h2>
-            <p>Click refresh to fetch the latest data from the source.</p>
+            <p>Try adjusting your search or filters.</p>
         </div>
     {% endif %}
 </div>
+
+<div id="toast-container"></div>
+
 {% endblock %}
