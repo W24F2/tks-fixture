@@ -22,6 +22,7 @@ limiter = Limiter(
 
 # Configuration
 TRUMBA_XML_URL = os.getenv('TRUMBA_XML_URL', "https://www.trumba.com/calendars/senior-fixtures.xml")
+CRON_SECRET = os.getenv("CRON_SECRET")
 
 @app.route('/')
 def index():
@@ -35,16 +36,17 @@ def get_fixtures():
     fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
     return jsonify([f.to_dict() for f in fixtures])
 
-@app.route('/api/refresh', methods=['POST'])
-@limiter.limit("5 per hour")  # Restrict intensive scraping
-def refresh_data():
+@app.route('/api/cron/refresh', methods=['GET'])
+def cron_refresh():
     """
-    Endpoint to trigger the scraper.
+    Endpoint for Vercel Cron Jobs.
+    Securely triggered by Vercel every 15 minutes.
     """
-    auth_token = request.headers.get("X-Refresh-Token")
-    expected_token = os.getenv("REFRESH_TOKEN")
+    # Check for the secret token in the query string or header
+    auth_token = request.args.get("token") or request.headers.get("X-Cron-Token")
 
-    if expected_token and auth_token != expected_token:
+    if not CRON_SECRET or auth_token != CRON_SECRET:
+        app.logger.warning("Unauthorized attempt to trigger cron refresh.")
         return jsonify({"error": "Unauthorized"}), 401
 
     try:
@@ -56,7 +58,7 @@ def refresh_data():
             "updated_fixtures": updated_count
         }), 200
     except Exception as e:
-        app.logger.error(f"Scrape failed: {e}")
+        app.logger.error(f"Cron scrape failed: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/health')
