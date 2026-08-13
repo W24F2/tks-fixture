@@ -7,8 +7,8 @@ def create_app():
     app = Flask(__name__)
 
     # Database Configuration
-    # Priority: 1. DATABASE_URL from env, 2. local sqlite
-    database_url = os.getenv("DATABASE_URL", "sqlite:///sports_fixtures.db")
+    # Priority: 1. POSTGRES_URL (Vercel/Neon), 2. DATABASE_URL, 3. local sqlite
+    database_url = os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL") or "sqlite:///sports_fixtures.db"
 
     # Handle sqlite prefix if needed (for some providers)
     if database_url.startswith("sqlite:///"):

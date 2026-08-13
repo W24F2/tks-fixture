@@ -8,3 +8,6 @@ env/
 .vscode/
 data/*.db
 sports_fixtures.db
+
+.vercel
+.env*
