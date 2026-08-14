@@ -49,6 +49,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     setupEventListeners();
     renderAll();
+
+    // Register Service Worker for PWA support
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js')
+          .then(reg => console.log('SW registered!', reg))
+          .catch(err => console.log('SW registration failed!', err));
+      });
+    }
 });
 
 /**
@@ -216,8 +225,8 @@ function renderDashboard(favouriteGroups, dateGroups) {
                 <h2 class="date-header">${formatDate(group.date)}</h2>
                 <div class="fixtures-container">
                     ${group.items.map(f => renderFixtureCard(f)).join('')}
-                </div>
-            </div>`;
+                </div >
+            </div >`;
         });
     }
 
@@ -228,21 +237,21 @@ function renderDashboard(favouriteGroups, dateGroups) {
                 <h2 class="date-header">${formatDate(group.date)}</h2>
                 <div class="fixtures-container">
                     ${group.items.map(f => renderFixtureCard(f)).join('')}
-                </div>
-            </div>`;
+                </div >
+            </div >`;
         });
     } else if (allFixtures.length > 0) {
         // If search returned nothing but there are fixtures
         html += `<div class="empty-state">
             <i data-lucide="search" class="empty-icon"></i>
             <p class="empty-text">No matches found for your search.</p>
-        </div>`;
+        </div >`;
     } else {
         // Truly empty state
         html += `<div class="empty-state">
             <i data-lucide="calendar" class="empty-icon"></i>
             <p class="empty-text">No fixtures available at the moment.</p>
-        </div>`;
+        </div >`;
     }
 
     container.innerHTML = html;
@@ -264,24 +273,24 @@ function renderFixtureCard(fixture) {
             <div class="fixture-header">
                 <span class="fixture-sport">${fixture.sport || 'Sport'}</span>
                 <span class="fixture-status">Scheduled</span>
-            </div>
+            </div >
             <div class="fixture-body">
-                <div class="fixture-title">${fixture.title}</div>
+                <div class="fixture-title">${fixture.title}</div >
                 <div class="fixture-details">
                     <p><i data-lucide="map-pin" class="icon-muted"></i> ${fixture.location || 'TBD'}</p>
                     <p><i data-lucide="clock" class="icon-muted"></i> ${formatTime(fixture.event_date, fixture.event_time)}</p>
-                </div>
+                </div >
                 <div class="fixture-teams">
                     <div class="team-group">
                         <span class="team-name">${fixture.team}</span>
-                    </div>
+                    </div >
                     <span class="vs">vs</span>
                     <div class="team-group">
                         <span class="team-name">${fixture.opposition}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
+                    </div >
+                </div >
+            </div >
+        </div >
     `;
 }
 
