@@ -16,7 +16,7 @@
 <div id="fixtures-list">
     {% if grouped_fixtures %}
         {% for date, fixtures in grouped_fixtures %}
-            <div class="date-section">
+            <div class="date-section {% if fixtures|selectattr('isFavourite')|list %}favourite-section{% endif %}">
                 <h2 class="date-header">{{ date.strftime('%A, %B %d, %Y') }}</h2>
                 <div class="fixtures-container">
                     {% for fixture in fixtures %}

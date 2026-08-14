@@ -533,3 +533,68 @@ body {
     font-size: 1.125rem;
     margin-bottom: 2.5rem;
 }
+
+/* --- Favourites Styling --- */
+
+.fav-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease;
+    color: var(--text-muted);
+}
+
+.fav-btn:hover {
+    transform: scale(1.2);
+}
+
+.fav-btn.active {
+    color: #fbbf24; /* Gold color for active star */
+}
+
+.fav-btn svg.lucide {
+    width: 24px;
+    height: 24px;
+}
+
+.fav-btn.active svg.lucide {
+    fill: #fbbf24;
+    color: #fbbf24;
+}
+
+/* Accent Header for Favourites Section */
+.accent-header {
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Team Group Layout for better spacing */
+.team-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Improved Matchup layout */
+.fixture-teams {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 1.25rem;
+    margin-top: 1.25rem;
+    border-top: 1px solid var(--glass-border);
+}
+
+/* Highlighted Favourites Section */
+.date-section.favourite-section {
+    position: relative;
+    padding: 1rem;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(6, 182, 212, 0.05) 100%);
+    border-radius: 2rem;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+}

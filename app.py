@@ -3,7 +3,7 @@ import threading
 import time
 from flask import Flask, jsonify, render_template, request
 from database import create_app
-from models import db, Fixture
+from models import db, Fixture, Favourite
 from scraper import TrumbaScraper
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -65,6 +65,49 @@ def get_fixtures():
     """API endpoint to get fixtures in JSON format."""
     fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
     return jsonify([f.to_dict() for f in fixtures])
+
+@app.route('/api/favourites/<device_id>', methods=['GET'])
+def get_favourites(device_id):
+    """Fetch all favourited teams for a device."""
+    favourites = Favourite.query.filter_by(device_id=device_id).all()
+    return jsonify([f.to_dict() for f in favourites])
+
+@app.route('/api/favourites', methods=['POST'])
+def add_favourite():
+    """Add a new team to favourites."""
+    data = request.get_json()
+    if not data or 'device_id' not in data or 'team_name' not in data:
+        return jsonify({"error": "Missing device_id or team_name"}), 400
+
+    device_id = data['device_id']
+    team_name = data['team_name']
+
+    try:
+        new_favourite = Favourite(device_id=device_id, team_name=team_name)
+        db.session.add(new_favourite)
+        db.session.commit()
+        return jsonify({"status": "success"}), 201
+    except Exception as e:
+        db.session.rollback()
+        # If it's a unique constraint error, it means it's already favourited
+        if 'UNIQUE constraint failed' in str(e) or 'duplicate key value' in str(e):
+            return jsonify({"status": "already_exists"}), 200
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/favourites/<device_id>/<path:team_name>', methods=['DELETE'])
+def delete_favourite(device_id, team_name):
+    """Remove a team from favourites."""
+    try:
+        favourite = Favourite.query.filter_by(device_id=device_id, team_name=team_name).first()
+        if not favourite:
+            return jsonify({"error": "Favourite not found"}), 404
+
+        db.session.delete(favourite)
+        db.session.commit()
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/cron/refresh', methods=['GET'])
 def cron_refresh():

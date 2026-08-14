@@ -32,3 +32,23 @@ class Fixture(db.Model):
             "team": self.team,
             "last_updated": self.last_updated.isoformat() if self.last_updated else None
         }
+
+class Favourite(db.Model):
+    __tablename__ = 'favourites'
+
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.String(36), nullable=False)
+    team_name = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint('device_id', 'team_name', name='uix_device_team'),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "device_id": self.device_id,
+            "team_name": self.team_name,
+            "created_at": self.created_at.isoformat()
+        }
