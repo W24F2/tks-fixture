@@ -48,12 +48,17 @@ def index():
     """Main dashboard view."""
     fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
 
+    # Get the most recent update time from any fixture
+    last_updated = None
+    if fixtures:
+        last_updated = max(f.last_updated for f in fixtures)
+
     # Group fixtures by date
     grouped_fixtures = []
     for date, group in groupby(fixtures, key=lambda x: x.event_date.date()):
         grouped_fixtures.append((date, list(group)))
 
-    return render_template('index.html', grouped_fixtures=grouped_fixtures)
+    return render_template('index.html', grouped_fixtures=grouped_fixtures, last_updated=last_updated)
 
 @app.route('/api/fixtures')
 def get_fixtures():

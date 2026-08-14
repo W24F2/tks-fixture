@@ -1,6 +1,6 @@
 import os
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timezone
 
 db = SQLAlchemy()
 
@@ -17,7 +17,7 @@ class Fixture(db.Model):
     opposition = db.Column(db.String(255))
     team = db.Column(db.String(100))
     raw_content = db.Column(db.Text)  # Store original HTML for fallback/debugging
-    last_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
         return {
@@ -30,5 +30,5 @@ class Fixture(db.Model):
             "sport": self.sport,
             "opposition": self.opposition,
             "team": self.team,
-            "last_updated": self.last_updated.isoformat()
+            "last_updated": self.last_updated.isoformat() if self.last_updated else None
         }

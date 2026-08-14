@@ -38,7 +38,22 @@ function updateStats(fixtures) {
     const totalEl = document.getElementById('stat-total');
     const updatedEl = document.getElementById('stat-updated');
     if (totalEl) totalEl.textContent = fixtures.length;
-    if (updatedEl) updatedEl.textContent = 'Just now';
+
+    if (updatedEl) {
+        let latest = null;
+        fixtures.forEach(f => {
+            if (f.last_updated) {
+                const d = new Date(f.last_updated);
+                if (!latest || d > latest) latest = d;
+            }
+        });
+
+        if (latest) {
+            updatedEl.textContent = latest.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' UTC';
+        } else {
+            updatedEl.textContent = 'Just now (UTC)';
+        }
+    }
 }
 
 function handleSearch(e) {
@@ -91,7 +106,7 @@ function renderFixtures(groupedFixtures) {
             <div class="empty-state">
                 <div class="empty-icon">
                     <i data-lucide="calendar-off" style="width: 64px; height: 64px;"></i>
-                </div >
+                </div>
                 <h2 class="empty-text">No fixtures match your criteria</h2>
                 <p>Try adjusting your search.</p>
             </div>
@@ -109,28 +124,28 @@ function renderFixtures(groupedFixtures) {
                         <div class="fixture-header">
                             <span class="fixture-sport">${fixture.sport || 'General'}</span>
                             <span class="fixture-status">Scheduled</span>
-                        </div >
+                        </div>
                         <div class="fixture-body">
                             <h3 class="fixture-title">${fixture.title}</h3>
                             <div class="fixture-details">
                                 <p><i data-lucide="map-pin" class="icon-muted"></i> ${fixture.location || 'TBD'}</p>
                                 <p><i data-lucide="calendar" class="icon-muted"></i> ${fixture.event_date.split('T')[0]}</p>
                                 <p><i data-lucide="clock" class="icon-muted"></i> ${fixture.event_time || 'TBD'}</p>
-                            </div >
+                            </div>
                             <div class="fixture-teams">
                                 <div class="team">
                                     <span class="team-name">${fixture.team || 'Home'}</span>
-                                </div >
+                                </div>
                                 <span class="vs">vs</span>
                                 <div class="team">
                                     <span class="team-name">${fixture.opposition || 'Away'}</span>
-                                </div >
-                            </div >
-                        </div >
-                    </div >
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 `).join('')}
-            </div >
-        </div >
+            </div>
+        </div>
     `).join('');
 
     if (typeof lucide !== 'undefined') lucide.createIcons();

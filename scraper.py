@@ -173,19 +173,20 @@ class TrumbaScraper:
                         if fixture:
                             fixture.title = title
                             fixture.location = metadata["location"]
-                            fixture.event_date = dt.date()
+                            fixture.event_date = dt
                             fixture.event_time = dt.time()
                             fixture.sport = metadata["sport"]
                             fixture.opposition = metadata["opposition"]
                             fixture.team = metadata["team"]
                             fixture.raw_content = content_html
+                            fixture.last_updated = datetime.utcnow()
                             updated_count += 1
                         else:
                             new_fixture = Fixture(
                                 external_id=external_id,
                                 title=title,
                                 location=metadata["location"],
-                                event_date=dt.date(),
+                                event_date=dt,
                                 event_time=dt.time(),
                                 sport=metadata["sport"],
                                 opposition=metadata["opposition"],
@@ -202,12 +203,13 @@ class TrumbaScraper:
                     if fixture:
                         fixture.title = title
                         fixture.location = metadata["location"]
-                        fixture.event_date = dt.date()
+                        fixture.event_date = dt
                         fixture.event_time = dt.time()
                         fixture.sport = metadata["sport"]
                         fixture.opposition = metadata["opposition"]
                         fixture.team = metadata["team"]
                         fixture.raw_content = content_html
+                        fixture.last_updated = datetime.utcnow()
                         updated_count += 1
                     else:
                         logger.error(f"Failed to retry update for {external_id} after IntegrityError")
