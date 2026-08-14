@@ -47,7 +47,7 @@ A high-performance, real-time sports fixture dashboard designed with a premium "
    Create a `.env` file in the root directory:
    ```env
    DATABASE_URL=sqlite:///sports_fixtures.db
-   TRUMBA_XML_URL=https://www.trumba.com/calendars/senior-fixtures.xml
+   TRUMBA_XML_URL=trumba_url
    SECRET_KEY=your_super_secret_key
    ```
 

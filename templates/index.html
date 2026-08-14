@@ -9,7 +9,7 @@
 <div class="controls-container">
     <div class="search-wrapper">
         <i data-lucide="search" class="search-icon"></i>
-        <input type="text" id="search-input" placeholder="Search fixtures, teams, or locations..." class="search-input">
+        <input type="text" id="search-input" placeholder="Search teams, opponents, or titles..." class="search-input">
     </div>
 </div>
 
@@ -20,28 +20,8 @@
                 <h2 class="date-header">{{ date.strftime('%A, %B %d, %Y') }}</h2>
                 <div class="fixtures-container">
                     {% for fixture in fixtures %}
-                        <div class="fixture-card" data-sport="{{ fixture.sport|lower if fixture.sport else 'general' }}" data-title="{{ fixture.title|lower }}" data-location="{{ fixture.location|lower if fixture.location else '' }}">
-                            <div class="fixture-header">
-                                <span class="fixture-sport">{{ fixture.sport or 'General' }}</span>
-                                <span class="fixture-status">Scheduled</span>
-                            </div>
-                            <div class="fixture-body">
-                                <h3 class="fixture-title">{{ fixture.title }}</h3>
-                                <div class="fixture-details">
-                                    <p><i data-lucide="map-pin" class="icon-muted"></i> {{ fixture.location or 'TBD' }}</p>
-                                    <p><i data-lucide="clock" class="icon-muted"></i> {{ fixture.event_time.strftime('%I:%M %p') if fixture.event_time else 'TBD' }}</p>
-                                </div>
-                                <div class="fixture-teams">
-                                    <div class="team">
-                                        <span class="team-name">{{ fixture.team or 'Home' }}</span>
-                                    </div>
-                                    <span class="vs">vs</span>
-                                    <div class="team">
-                                        <span class="team-name">{{ fixture.opposition or 'Away' }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <!-- Note: The fixture card is rendered via JavaScript in app.js, not here.
+                             This HTML is a fallback/initial structure, but app.js will overwrite it. -->
                     {% endfor %}
                 </div>
             </div>

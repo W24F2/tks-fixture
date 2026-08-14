@@ -2,7 +2,7 @@ import os
 import requests
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from lxml import etree, html
 from sqlalchemy.exc import IntegrityError
 from models import db, Fixture
@@ -40,53 +40,68 @@ class TrumbaScraper:
         """
         clean_text = self._clean_html(content_html)
 
-        # 2. Find the date/time segment.
+        # 1. Find the date/time segment.
         # It usually looks like: "Saturday, August 15, 2026, 7–8:30am"
         # Regex: (Month) (Day), (Year), (Time Segment)
-        date_pattern = r'([A-Z][a-z]+ \d{1,2}, \d{4}),\s*([^<]+)'
-        match = re.search(date_pattern, clean_text)
+        date_time_pattern = r'([A-Z][a-z]+(?:, [A-Z][a-z]+)? \d{1,2}, \d{4}),\s*(.*)'
+        match = re.search(date_time_pattern, clean_text)
 
         if not match:
-            # Fallback: try to find just the date part if weekday is missing
-            date_pattern = r'([A-Z][a-z]+ \d{1,2}, \d{4}, [^<]+)'
-            match = re.search(date_pattern, clean_text)
-            if not match:
-                return None
+            logger.warning(f"Could not find date/time pattern in text: {clean_text[:100]}...")
+            return None
 
-            full_match = match.group(1)
-            parts = full_match.split(',')
-            if len(parts) < 3: return None
-            date_part = f"{parts[1].strip()} {parts[2].strip()}"
-            time_part = parts[3].strip() if len(parts) > 3 else ""
-        else:
-            date_part = match.group(1)
-            time_part = match.group(2)
+        date_part = match.group(1).strip()
+        time_part = match.group(2).strip()
 
-        # 3. Parse the time part.
+        # 2. Parse the time part.
+        # Handle ranges like "7–8:30am" by taking the first part.
         time_segment = re.split(r'[–\-\—]', time_part)[0].strip()
+
+        # BUG FIX: If the time_segment (e.g. "7") doesn't have am/pm,
+        # but the whole time_part (e.g. "7-8:30pm") does,
+        # we should apply the am/pm to the time_segment.
+        if not re.search(r'[ap]m', time_segment, re.IGNORECASE) and re.search(r'[ap]m', time_part, re.IGNORECASE):
+            suffix_match = re.search(r'([ap]m)', time_part, re.IGNORECASE)
+            if suffix_match:
+                time_segment = f"{time_segment} {suffix_match.group(1)}"
+
+        # Normalize time segment: ensure space before am/pm (e.g., "7am" -> "7 am")
         time_segment = re.sub(r'([ap]m)', r' \1', time_segment, flags=re.IGNORECASE).strip()
 
+        # If no colon is present (e.g., "7 am"), add ":00"
         if ':' not in time_segment:
             match_hour = re.search(r'(\d{1,2})', time_segment)
             if match_hour:
                 hour = match_hour.group(1)
                 suffix = ""
-                if "am" in time_segment.lower(): suffix = " am"
-                elif "pm" in time_segment.lower(): suffix = " pm"
+                if "am" in time_segment.lower(): suffix = " AM"
+                elif "pm" in time_segment.lower(): suffix = " PM"
                 time_segment = f"{hour}:00{suffix}"
 
         try:
             final_str = f"{date_part} {time_segment}"
-            final_str = re.sub(r'([ap]m)', r' \1', final_str, flags=re.IGNORECASE).strip()
+            # Clean up any extra whitespace
             final_str = ' '.join(final_str.split())
 
-            for fmt in ("%B %d, %Y %I:%M %p", "%B %d, %Y %I %p", "%B %d, %Y %H:%M"):
+            # 3. Try various datetime formats to match the cleaned string
+            formats = [
+                "%A, %B %d, %Y %I:%M %p", # Saturday, August 15, 2026 7:00 AM
+                "%B %d, %Y %I:%M %p",    # August 15, 2026 7:00 AM
+                "%A, %B %d, %Y %I %p",   # Saturday, August 15, 2026 7 AM
+                "%B %d, %Y %I %p",       # August 15, 2026 7 AM
+                "%A, %B %d, %Y %H:%M",   # Saturday, August 15, 2026 19:00
+                "%B %d, %Y %H:%M",       # August 15, 2026 19:00
+                "%B %d, %Y %I:%M%p",    # August 15, 2026 7:00AM
+                "%B %d, %Y %I%p",        # August 15, 2026 7AM
+            ]
+
+            for fmt in formats:
                 try:
                     return datetime.strptime(final_str, fmt)
                 except ValueError:
                     continue
 
-            logger.warning(f"Failed to parse datetime: {final_str}")
+            logger.warning(f"Failed to parse datetime string: '{final_str}' using available formats.")
             return None
         except Exception as e:
             logger.error(f"Datetime error: {e}")
@@ -179,7 +194,7 @@ class TrumbaScraper:
                             fixture.opposition = metadata["opposition"]
                             fixture.team = metadata["team"]
                             fixture.raw_content = content_html
-                            fixture.last_updated = datetime.utcnow()
+                            fixture.last_updated = datetime.now(timezone.utc)
                             updated_count += 1
                         else:
                             new_fixture = Fixture(
@@ -209,7 +224,7 @@ class TrumbaScraper:
                         fixture.opposition = metadata["opposition"]
                         fixture.team = metadata["team"]
                         fixture.raw_content = content_html
-                        fixture.last_updated = datetime.utcnow()
+                        fixture.last_updated = datetime.now(timezone.utc)
                         updated_count += 1
                     else:
                         logger.error(f"Failed to retry update for {external_id} after IntegrityError")

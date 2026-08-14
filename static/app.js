@@ -93,14 +93,18 @@ async function fetchFixtures() {
 }
 
 /**
- * Fetches favourited teams for the current device, using cache if available.
+ * Fetches favourited fixtures for the current device, using cache if available.
  */
-async function fetchFavourites() {
-    const cached = getCache(`favourites_${deviceId}`);
-    if (cached) {
-        console.log('[System] Loading favourites from cache');
-        favourites = cached;
-        return;
+async function fetchFavourites(bypassCache = false) {
+    if (!deviceId) return;
+
+    if (!bypassCache) {
+        const cached = getCache(`favourites_${deviceId}`);
+        if (cached) {
+            console.log('[System] Loading favourites from cache');
+            favourites = cached;
+            return;
+        }
     }
 
     try {
@@ -169,15 +173,14 @@ function groupFixturesByDate(fixtures) {
 }
 
 /**
- * Identifies fixtures that involve favourited teams.
+ * Identifies fixtures that are favourited by checking if their fixture.id
+ * is in the favourites array (which now contains fixture_ids).
  */
 function getFavouriteGroups(fixtures) {
     if (favourites.length === 0) return [];
 
-    const favTeamNames = favourites.map(f => f.team_name);
-    const favFixtures = fixtures.filter(f =>
-        favTeamNames.includes(f.team) || favTeamNames.includes(f.opposition)
-    );
+    const favFixtureIds = favourites.map(f => Number(f.fixture_id));
+    const favFixtures = fixtures.filter(f => favFixtureIds.includes(Number(f.id)));
 
     if (favFixtures.length === 0) return [];
 
@@ -209,7 +212,7 @@ function renderDashboard(favouriteGroups, dateGroups) {
     if (favouriteGroups.length > 0) {
         html += `<h2 class="date-header accent-header" style="text-align: center; margin: 2rem 0 1rem;">Your Favourites</h2>`;
         favouriteGroups.forEach(group => {
-            html += `<div class="date-section">
+            html += `<div class="date-section favourite-section">
                 <h2 class="date-header">${formatDate(group.date)}</h2>
                 <div class="fixtures-container">
                     ${group.items.map(f => renderFixtureCard(f)).join('')}
@@ -248,14 +251,16 @@ function renderDashboard(favouriteGroups, dateGroups) {
 
 /**
  * Renders a single fixture card.
- * Each team has its own favourite button to avoid interference.
+ * Uses fixture.id to check for favourite status.
  */
 function renderFixtureCard(fixture) {
-    const favTeam = favourites.find(f => f.team_name === fixture.team);
-    const favOpp = favourites.find(f => f.team_name === fixture.opposition);
+    const isFav = favourites.some(f => Number(f.fixture_id) === Number(fixture.id));
 
     return `
         <div class="fixture-card" data-id="${fixture.id}">
+            <button class="fav-btn ${isFav ? 'active' : ''}" data-fixture-id="${fixture.id}">
+                <i data-lucide="star"></i>
+            </button>
             <div class="fixture-header">
                 <span class="fixture-sport">${fixture.sport || 'Sport'}</span>
                 <span class="fixture-status">Scheduled</span>
@@ -264,21 +269,15 @@ function renderFixtureCard(fixture) {
                 <div class="fixture-title">${fixture.title}</div>
                 <div class="fixture-details">
                     <p><i data-lucide="map-pin" class="icon-muted"></i> ${fixture.location || 'TBD'}</p>
-                    <p><i data-lucide="clock" class="icon-muted"></i> ${formatTime(fixture.event_time)}</p>
+                    <p><i data-lucide="clock" class="icon-muted"></i> ${formatTime(fixture.event_date, fixture.event_time)}</p>
                 </div>
                 <div class="fixture-teams">
                     <div class="team-group">
                         <span class="team-name">${fixture.team}</span>
-                        <button class="fav-btn ${favTeam ? 'active' : ''}" data-team="${fixture.team}">
-                            <i data-lucide="star"></i>
-                        </button>
                     </div>
                     <span class="vs">vs</span>
                     <div class="team-group">
                         <span class="team-name">${fixture.opposition}</span>
-                        <button class="fav-btn ${favOpp ? 'active' : ''}" data-team="${fixture.opposition}">
-                            <i data-lucide="star"></i>
-                        </button>
                     </div>
                 </div>
             </div>
@@ -293,10 +292,20 @@ function formatDate(dateStr) {
     return new Date(dateStr).toLocaleDateString(undefined, options);
 }
 
-function formatTime(timeStr) {
+function formatTime(eventDate, timeStr) {
     if (!timeStr) return 'TBD';
-    const [hh, mm] = timeStr.split(':');
-    return `${hh}:${mm}`;
+    try {
+        // Create a date object using the event date and the time part
+        const date = new Date(eventDate);
+        const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+
+        date.setHours(hours, minutes || 0, seconds || 0, 0);
+
+        return date.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Australia/Sydney' });
+    } catch (e) {
+        console.error('[Error] Formatting time:', e);
+        return timeStr;
+    }
 }
 
 function updateStats() {
@@ -304,8 +313,33 @@ function updateStats() {
     const updatedEl = document.getElementById('stat-updated');
     if (totalEl) totalEl.textContent = allFixtures.length;
     if (updatedEl && allFixtures.length > 0) {
-        const last = new Date(allFixtures[0].last_updated);
-        updatedEl.textContent = last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' UTC';
+        // Find the fixture with the most recent last_updated timestamp
+        const latestFixture = allFixtures.reduce((prev, current) => {
+            const prevTs = new Date(prev.last_updated).getTime();
+            const currentTs = new Date(current.last_updated).getTime();
+            return currentTs > prevTs ? current : prev;
+        });
+
+        let ts = latestFixture.last_updated;
+        // Ensure we treat the timestamp as UTC if no timezone is provided
+        if (typeof ts === 'string' && !ts.match(/[Zz]|[+-]\d{2}:?\d{2}$/)) {
+            ts += 'Z';
+        }
+        const last = new Date(ts);
+
+        try {
+            const formatter = new Intl.DateTimeFormat('en-AU', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
+                timeZone: 'Australia/Sydney'
+            });
+            const sydneyTime = formatter.format(last);
+            updatedEl.textContent = `${sydneyTime} (Sydney Time)`;
+        } catch (e) {
+            console.error('[Error] Formatting Sydney time:', e);
+            updatedEl.textContent = last.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: true }) + ' (Local Time)';
+        }
     }
 }
 
@@ -345,37 +379,43 @@ function setupEventListeners() {
         const btn = e.target.closest('.fav-btn');
         if (!btn) return;
 
-        const team = btn.dataset.team;
-        const isCurrentlyFav = favourites.some(f => f.team_name === team);
+        const fixtureId = Number(btn.dataset.fixtureId);
+        if (isNaN(fixtureId)) {
+            console.error("[Error] Invalid fixtureId on fav-btn click:", btn.dataset.fixtureId);
+            return;
+        }
+
+        // Check if this fixture is currently favourited by comparing IDs as numbers
+        const isCurrentlyFav = favourites.some(f => Number(f.fixture_id) === fixtureId);
 
         if (isCurrentlyFav) {
-            await toggleFavourite(team, 'DELETE');
+            await toggleFavourite(fixtureId, 'DELETE');
         } else {
-            await toggleFavourite(team, 'POST');
+            await toggleFavourite(fixtureId, 'POST');
         }
     });
 }
 
-async function toggleFavourite(teamName, method) {
+async function toggleFavourite(fixtureId, method) {
     try {
         let response;
         if (method === 'POST') {
             response = await fetch(`${API_BASE}/favourites`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ device_id: deviceId, team_name: teamName })
+                body: JSON.stringify({ device_id: deviceId, fixture_id: fixtureId })
             });
         } else {
-            response = await fetch(`${API_BASE}/favourites/${deviceId}/${encodeURIComponent(teamName)}`, {
+            response = await fetch(`${API_BASE}/favourites/${deviceId}/${fixtureId}`, {
                 method: 'DELETE'
             });
         }
 
         if (response.ok) {
             // Immediately update local state and cache to ensure instant UI feedback
-            await fetchFavourites();
+            await fetchFavourites(true);
             renderAll();
-            showToast(`Updated favourites for ${teamName}`, 'success');
+            showToast(`Updated favourite status`, 'success');
         } else {
             const err = await response.json();
             if (err.status === 'already_exists') {
@@ -387,6 +427,6 @@ async function toggleFavourite(teamName, method) {
         }
     } catch (error) {
         console.error('[Error] Toggling favourite:', error);
-        showToast('Failed to update favourites.', 'error');
+        showToast(`Failed to update favourites: ${error.message}`, 'error');
     }
 }

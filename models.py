@@ -38,17 +38,17 @@ class Favourite(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     device_id = db.Column(db.String(36), nullable=False)
-    team_name = db.Column(db.String(100), nullable=False)
+    fixture_id = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
-        db.UniqueConstraint('device_id', 'team_name', name='uix_device_team'),
+        db.UniqueConstraint('device_id', 'fixture_id', name='uix_device_fixture'),
     )
 
     def to_dict(self):
         return {
             "id": self.id,
             "device_id": self.device_id,
-            "team_name": self.team_name,
+            "fixture_id": self.fixture_id,
             "created_at": self.created_at.isoformat()
         }

@@ -74,31 +74,32 @@ def get_favourites(device_id):
 
 @app.route('/api/favourites', methods=['POST'])
 def add_favourite():
-    """Add a new team to favourites."""
+    """Add a new fixture to favourites."""
     data = request.get_json()
-    if not data or 'device_id' not in data or 'team_name' not in data:
-        return jsonify({"error": "Missing device_id or team_name"}), 400
+    if not data or 'device_id' not in data or 'fixture_id' not in data:
+        return jsonify({"error": "Missing device_id or fixture_id"}), 400
 
     device_id = data['device_id']
-    team_name = data['team_name']
+    fixture_id = data['fixture_id']
 
     try:
-        new_favourite = Favourite(device_id=device_id, team_name=team_name)
+        new_favourite = Favourite(device_id=device_id, fixture_id=fixture_id)
         db.session.add(new_favourite)
         db.session.commit()
         return jsonify({"status": "success"}), 201
     except Exception as e:
         db.session.rollback()
         # If it's a unique constraint error, it means it's already favourited
-        if 'UNIQUE constraint failed' in str(e) or 'duplicate key value' in str(e):
+        err_msg = str(e).lower()
+        if 'unique constraint failed' in err_msg or 'duplicate key value' in err_msg:
             return jsonify({"status": "already_exists"}), 200
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/favourites/<device_id>/<path:team_name>', methods=['DELETE'])
-def delete_favourite(device_id, team_name):
-    """Remove a team from favourites."""
+@app.route('/api/favourites/<device_id>/<int:fixture_id>', methods=['DELETE'])
+def delete_favourite(device_id, fixture_id):
+    """Remove a fixture from favourites."""
     try:
-        favourite = Favourite.query.filter_by(device_id=device_id, team_name=team_name).first()
+        favourite = Favourite.query.filter_by(device_id=device_id, fixture_id=fixture_id).first()
         if not favourite:
             return jsonify({"error": "Favourite not found"}), 404
 

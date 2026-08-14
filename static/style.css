@@ -306,6 +306,7 @@ body {
     height: 100%;
     display: flex;
     flex-direction: column;
+    position: relative; /* Added for absolute positioning of .fav-btn */
 }
 
 .fixture-card:hover {
@@ -338,6 +339,7 @@ body {
     padding: 0.2rem 0.6rem;
     border-radius: 2rem;
     font-weight: 600;
+    margin-right: 2.5rem; /* Added margin to prevent overlap with star icon */
 }
 
 .fixture-body {
@@ -537,15 +539,19 @@ body {
 /* --- Favourites Styling --- */
 
 .fav-btn {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
     background: transparent;
     border: none;
     cursor: pointer;
-    padding: 4px;
+    padding: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.2s ease;
+    transition: transform 0.2s ease, color 0.2s ease;
     color: var(--text-muted);
+    z-index: 20;
 }
 
 .fav-btn:hover {
@@ -593,8 +599,9 @@ body {
 /* Highlighted Favourites Section */
 .date-section.favourite-section {
     position: relative;
-    padding: 1rem;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(6, 182, 212, 0.05) 100%);
+    padding: 1.5rem;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%);
     border-radius: 2rem;
-    border: 1px solid rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 20px rgba(6, 182, 212, 0.1);
 }
