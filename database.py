@@ -2,12 +2,13 @@ import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from models import db
+from sqlalchemy import text, inspect
 
 def create_app():
     app = Flask(__name__)
 
     # Database Configuration
-    # Priority: 1. POSTGRES_URL (Vercel/Neon), 2. DATABASE_URL, 3. local sqlite
+    # Priority: POSTGRES_URL (Vercel/Neon), 2. DATABASE_URL, 3. local sqlite
     database_url = os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL") or "sqlite:///sports_fixtures.db"
 
     # Handle sqlite prefix if needed (for some providers)
@@ -26,6 +27,17 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        # Simple auto-migration for missing columns
+        try:
+            inspector = inspect(db.engine)
+            if inspector.has_table('fixtures'):
+                columns = [c['name'] for c in inspector.get_columns('fixtures')]
+                if 'event_end_time' not in columns:
+                    print("[System] Adding missing column 'event_end_time' to 'fixtures' table...")
+                    db.session.execute(text("ALTER TABLE fixtures ADD COLUMN event_end_time TIME"))
+                    db.session.commit()
+        except Exception as e:
+            print(f"[System] Auto-migration failed: {e}")
 
     return app
 
