@@ -12,8 +12,9 @@ let deviceId = null;
 
 // --- Caching Helpers ---
 const CACHE_EXPIRY = 15 * 60 * 1000; // 15 minutes
+const FAVOURITES_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
 
-function setCache(key, data) {
+function setCache(key, data, expiry = CACHE_EXPIRY) {
     const cacheData = {
         timestamp: Date.now(),
         data: data
@@ -21,13 +22,13 @@ function setCache(key, data) {
     localStorage.setItem(`sf_cache_${key}`, JSON.stringify(cacheData));
 }
 
-function getCache(key) {
+function getCache(key, expiry = CACHE_EXPIRY) {
     const cached = localStorage.getItem(`sf_cache_${key}`);
     if (!cached) return null;
 
     try {
         const { timestamp, data } = JSON.parse(cached);
-        if (Date.now() - timestamp > CACHE_EXPIRY) {
+        if (Date.now() - timestamp > expiry) {
             localStorage.removeItem(`sf_cache_${key}`);
             return null;
         }
@@ -108,7 +109,7 @@ async function fetchFavourites(bypassCache = false) {
     if (!deviceId) return;
 
     if (!bypassCache) {
-        const cached = getCache(`favourites_${deviceId}`);
+        const cached = getCache(`favourites_${deviceId}`, FAVOURITES_CACHE_EXPIRY);
         if (cached) {
             console.log('[System] Loading favourites from cache');
             favourites = cached;
@@ -120,7 +121,7 @@ async function fetchFavourites(bypassCache = false) {
         const response = await fetch(`${API_BASE}/favourites/${deviceId}`);
         if (!response.ok) throw new Error('Failed to fetch favourites');
         favourites = await response.json();
-        setCache(`favourites_${deviceId}`, favourites);
+        setCache(`favourites_${deviceId}`, favourites, FAVOURITES_CACHE_EXPIRY);
         console.log('[System] Favourites loaded:', favourites);
     } catch (error) {
         console.error('[Error] Fetching favourites:', error);
@@ -145,13 +146,18 @@ function renderAll() {
         return matchTeam || matchTitle;
     });
 
+    // Split into active and finished fixtures
+    const activeFixtures = filtered.filter(f => f.status !== 'Finished');
+    const finishedFixtures = filtered.filter(f => f.status === 'Finished');
+
     // Group by date for rendering
-    const grouped = groupFixturesByDate(filtered);
+    const activeGroups = groupFixturesByDate(activeFixtures);
+    const finishedGroups = groupFixturesByDate(finishedFixtures);
 
     // Get favourites group
     const favouriteGroups = getFavouriteGroups(filtered);
 
-    renderDashboard(favouriteGroups, grouped);
+    renderDashboard(favouriteGroups, activeGroups, finishedGroups, allFixtures.length > 0);
 }
 
 /**
@@ -211,7 +217,7 @@ function getFavouriteGroups(fixtures) {
 /**
  * Injects the HTML into the main container.
  */
-function renderDashboard(favouriteGroups, dateGroups) {
+function renderDashboard(favouriteGroups, activeGroups, finishedGroups, hasFixtures) {
     const container = document.getElementById('fixtures-list');
     if (!container) return;
 
@@ -230,9 +236,9 @@ function renderDashboard(favouriteGroups, dateGroups) {
         });
     }
 
-    // 2. Render Standard Date Sections
-    if (dateGroups.length > 0) {
-        dateGroups.forEach(group => {
+    // 2. Render Standard Date Sections (Active Matches)
+    if (activeGroups.length > 0) {
+        activeGroups.forEach(group => {
             html += `<div class="date-section">
                 <h2 class="date-header">${formatDate(group.date)}</h2>
                 <div class="fixtures-container">
@@ -240,18 +246,35 @@ function renderDashboard(favouriteGroups, dateGroups) {
                 </div >
             </div >`;
         });
-    } else if (allFixtures.length > 0) {
-        // If search returned nothing but there are fixtures
-        html += `<div class="empty-state">
-            <i data-lucide="search" class="empty-icon"></i>
-            <p class="empty-text">No matches found for your search.</p>
-        </div >`;
-    } else {
-        // Truly empty state
-        html += `<div class="empty-state">
-            <i data-lucide="calendar" class="empty-icon"></i>
-            <p class="empty-text">No fixtures available at the moment.</p>
-        </div >`;
+    }
+
+    // 3. Render Finished Matches Section
+    if (finishedGroups.length > 0) {
+        finishedGroups.forEach(group => {
+            html += `<div class="date-section">
+                <h2 class="date-header accent-header">FINISHED - ${formatDate(group.date)}</h2>
+                <div class="fixtures-container">
+                    ${group.items.map(f => renderFixtureCard(f)).join('')}
+                </div >
+            </div >`;
+        });
+    }
+
+    // Empty States
+    if (favouriteGroups.length === 0 && activeGroups.length === 0 && finishedGroups.length === 0) {
+        if (hasFixtures) {
+            // If search returned nothing but there are fixtures
+            html += `<div class="empty-state">
+                <i data-lucide="search" class="empty-icon"></i>
+                <p class="empty-text">No matches found for your search.</p>
+            </div >`;
+        } else {
+            // Truly empty state
+            html += `<div class="empty-state">
+                <i data-lucide="calendar" class="empty-icon"></i>
+                <p class="empty-text">No fixtures available at the moment.</p>
+            </div >`;
+        }
     }
 
     container.innerHTML = html;
@@ -272,7 +295,7 @@ function renderFixtureCard(fixture) {
             </button>
             <div class="fixture-header">
                 <span class="fixture-sport">${fixture.sport || 'Sport'}</span>
-                <span class="fixture-status">Scheduled</span>
+                <span class="fixture-status status-${fixture.status?.toLowerCase() || 'scheduled'}">${fixture.status || 'Scheduled'}</span>
             </div >
             <div class="fixture-body">
                 <div class="fixture-title">${fixture.title}</div >
@@ -406,6 +429,26 @@ function setupEventListeners() {
 }
 
 async function toggleFavourite(fixtureId, method) {
+    // Optimistic Update
+    const originalFavourites = [...favourites];
+    let optimisticFav = null;
+
+    if (method === 'POST') {
+        // Create an optimistic object that matches the API response format
+        // The API returns { "id": ..., "device_id": ..., "fixture_id": ..., "created_at": ... }
+        // But the frontend uses Number(f.fixture_id) to match.
+        optimisticFav = {
+            fixture_id: fixtureId,
+            device_id: deviceId,
+            id: Date.now() // Temporary ID for UI
+        };
+        favourites.push(optimisticFav);
+    } else {
+        favourites = favourites.filter(f => Number(f.fixture_id) !== fixtureId);
+    }
+
+    renderAll();
+
     try {
         let response;
         if (method === 'POST') {
@@ -421,14 +464,25 @@ async function toggleFavourite(fixtureId, method) {
         }
 
         if (response.ok) {
-            // Immediately update local state and cache to ensure instant UI feedback
-            await fetchFavourites(true);
-            renderAll();
+            // Success! Update cache and ensure the local state is perfectly synced with the server
+            // We don't call fetchFavourites(true) anymore to avoid unnecessary network load,
+            // instead we just update the cache with our current (now correct) state.
+            // Actually, the API POST returns 201 and DELETE returns 200, but they don't return the full object.
+            // For a more robust sync, we might want the API to return the full object.
+            // For now, let's just update the cache.
+            setCache(`favourites_${deviceId}`, favourites, FAVOURITES_CACHE_EXPIRY);
             showToast(`Updated favourite status`, 'success');
         } else {
             const err = await response.json();
             if (err.status === 'already_exists') {
-                await fetchFavourites();
+                // This is actually a success case for the user (they clicked twice fast)
+                // Just ensure state is clean
+                favourites = originalFavourites;
+                // This shouldn't happen with optimistic updates if we're careful
+                // but we'll reset to be safe.
+                // However, if it already exists, the 'POST' was successful in effect.
+                // Let's re-fetch to be absolutely sure.
+                await fetchFavourites(true);
                 renderAll();
             } else {
                 throw new Error(err.error || 'Failed to update favourite');
@@ -436,6 +490,9 @@ async function toggleFavourite(fixtureId, method) {
         }
     } catch (error) {
         console.error('[Error] Toggling favourite:', error);
+        // Rollback on error
+        favourites = originalFavourites;
+        renderAll();
         showToast(`Failed to update favourites: ${error.message}`, 'error');
     }
 }

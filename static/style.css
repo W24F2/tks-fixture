@@ -153,6 +153,16 @@ body {
     height: 16px;
 }
 
+/* Responsive adjustments for Navbar */
+@media (max-width: 640px) {
+    .navbar-stats {
+        display: none; /* Hide stats on small screens to save space */
+    }
+    .logo {
+        font-size: 1.1rem;
+    }
+}
+
 /* Dashboard Content */
 .dashboard-header {
     margin: 4rem 0 2rem;
@@ -271,26 +281,38 @@ body {
     margin: 0;
 }
 
-/* Fixtures Container - 3 COLUMNS ON LAPTOP */
-.fixtures-container {
-    display: grid !important;
-    grid-template-columns: repeat(3, 1fr) !important;
-    gap: 2rem;
-    margin-bottom: 5rem;
-    width: 100%;
+/* Responsive adjustments for Disclaimer Bar */
+@media (max-width: 640px) {
+    .disclaimer-bar {
+        padding: 0.5rem;
+    }
+    .disclaimer-bar p {
+        font-size: 0.7rem;
+    }
 }
 
-/* Responsive breakdown */
-@media (max-width: 1024px) {
-    .fixtures-container {
-        grid-template-columns: repeat(2, 1fr) !important;
-    }
+/* Container padding for mobile to avoid overlap with disclaimer-bar and navbar */
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
 }
 
 @media (max-width: 640px) {
-    .fixtures-container {
-        grid-template-columns: 1fr !important;
+    .container {
+        padding: 0 1rem;
     }
+    main.container {
+        padding-bottom: 5rem; /* Space for fixed disclaimer bar */
+    }
+}
+
+/* Fixture Grid Container */
+.fixtures-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    width: 100%;
 }
 
 /* Fixture Card - Glassmorphism */
@@ -317,6 +339,7 @@ body {
 
 .fixture-header {
     padding: 1rem 1.5rem;
+    padding-right: 3.5rem; /* Added space for the fav-btn to prevent overlap */
     background: rgba(0, 0, 0, 0.2);
     border-bottom: 1px solid var(--glass-border);
     display: flex;
@@ -334,12 +357,37 @@ body {
 
 .fixture-status {
     font-size: 0.7rem;
+    padding: 0.2rem 0.75rem;
+    border-radius: 1rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: inline-block;
+}
+
+.status-scheduled {
+    background: rgba(99, 102, 241, 0.15);
+    color: #818cf8;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.status-live {
     background: var(--success-color);
     color: white;
-    padding: 0.2rem 0.6rem;
-    border-radius: 2rem;
-    font-weight: 600;
-    margin-right: 2.5rem; /* Added margin to prevent overlap with star icon */
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.status-finished {
+    background: rgba(100, 116, 139, 0.1);
+    color: var(--text-muted);
+    border: 1px solid rgba(100, 116, 139, 0.2);
 }
 
 .fixture-body {

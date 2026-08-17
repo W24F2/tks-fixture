@@ -54,36 +54,64 @@ class TrumbaScraper:
         time_part = match.group(2).strip()
 
         # 2. Parse the time part.
-        # Handle ranges like "7–8:30am" by taking the first part.
-        time_segment = re.split(r'[–\-\—]', time_part)[0].strip()
+        # Handle ranges like "7–8:30am" by taking both parts.
+        time_parts = re.split(r'[–\-\—]', time_part)
 
-        # BUG FIX: If the time_segment (e.g. "7") doesn't have am/pm,
-        # but the whole time_part (e.g. "7-8:30pm") does,
-        # we should apply the am/pm to the time_segment.
-        if not re.search(r'[ap]m', time_segment, re.IGNORECASE) and re.search(r'[ap]m', time_part, re.IGNORECASE):
-            suffix_match = re.search(r'([ap]m)', time_part, re.IGNORECASE)
-            if suffix_match:
-                time_segment = f"{time_segment} {suffix_match.group(1)}"
+        # We need both start and end times for accurate status.
+        # time_parts[0] is start, time_parts[1] (if exists) is end.
 
-        # Normalize time segment: ensure space before am/pm (e.g., "7am" -> "7 am")
-        time_segment = re.sub(r'([ap]m)', r' \1', time_segment, flags=re.IGNORECASE).strip()
+        start_time_str = time_parts[0].strip()
+        end_time_str = time_parts[1].strip() if len(time_parts) > 1 else None
+
+        # Apply am/pm to both if not present
+        def apply_suffix(t_str, full_part):
+            if not re.search(r'[ap]m', t_str, re.IGNORECASE) and re.search(r'[ap]m', full_part, re.IGNORECASE):
+                suffix_match = re.search(r'([ap]m)', full_part, re.IGNORECASE)
+                if suffix_match:
+                    return f"{t_str} {suffix_match.group(1)}"
+            return t_str
+
+        start_time_str = apply_suffix(start_time_str, time_part)
+        if end_time_str:
+            end_time_str = apply_suffix(end_time_str, time_part)
+
+        # Normalize time segments: ensure space before am/pm (e.g., "7am" -> "7 am")
+        start_time_str = re.sub(r'([ap]m)', r' \1', start_time_str, flags=re.IGNORECASE).strip()
+        if end_time_str:
+            end_time_str = re.sub(r'([ap]m)', r' \1', end_time_str, flags=re.IGNORECASE).strip()
 
         # If no colon is present (e.g., "7 am"), add ":00"
-        if ':' not in time_segment:
-            match_hour = re.search(r'(\d{1,2})', time_segment)
-            if match_hour:
-                hour = match_hour.group(1)
-                suffix = ""
-                if "am" in time_segment.lower(): suffix = " AM"
-                elif "pm" in time_segment.lower(): suffix = " PM"
-                time_segment = f"{hour}:00{suffix}"
+        def add_minutes(t_str):
+            if ':' not in t_str:
+                match_hour = re.search(r'(\d{1,2})', t_str)
+                if match_hour:
+                    hour = match_hour.group(1)
+                    suffix = ""
+                    if "am" in t_str.lower(): suffix = " AM"
+                    elif "pm" in t_str.lower(): suffix = " PM"
+                    return f"{hour}:00{suffix}"
+            return t_str
 
-        try:
-            final_str = f"{date_part} {time_segment}"
-            # Clean up any extra whitespace
+        start_time_str = add_minutes(start_time_str)
+        if end_time_str:
+            end_time_str = add_minutes(end_time_str)
+
+        def parse_to_datetime(d_part, t_part):
+            if not t_part: return None
+            # Normalize time segment: ensure space before am/pm (e.g., "7am" -> "7 am")
+            t_part = re.sub(r'([ap]m)', r' \1', t_part, flags=re.IGNORECASE).strip()
+            # If no colon is present (e.g., "7 am"), add ":00"
+            if ':' not in t_part:
+                match_hour = re.search(r'(\d{1,2})', t_part)
+                if match_hour:
+                    hour = match_hour.group(1)
+                    suffix = ""
+                    if "am" in t_part.lower(): suffix = " AM"
+                    elif "pm" in t_part.lower(): suffix = " PM"
+                    t_part = f"{hour}:00{suffix}"
+
+            final_str = f"{d_part} {t_part}"
             final_str = ' '.join(final_str.split())
-
-            # 3. Try various datetime formats to match the cleaned string
             formats = [
                 "%A, %B %d, %Y %I:%M %p", # Saturday, August 15, 2026 7:00 AM
                 "%B %d, %Y %I:%M %p",    # August 15, 2026 7:00 AM
@@ -91,21 +119,25 @@ class TrumbaScraper:
                 "%B %d, %Y %I %p",       # August 15, 2026 7 AM
                 "%A, %B %d, %Y %H:%M",   # Saturday, August 15, 2026 19:00
                 "%B %d, %Y %H:%M",       # August 15, 2026 19:00
-                "%B %d, %Y %I:%M%p",    # August 15, 2026 7:00AM
-                "%B %d, %Y %I%p",        # August 15, 2026 7AM
+                "%A, %B %d, %Y %I:%M%p",    # August 15, 2026 7:00AM
+                "%A, %B %d, %Y %I%p",        # August 15, 2026 7AM
             ]
-
             for fmt in formats:
                 try:
                     return datetime.strptime(final_str, fmt)
                 except ValueError:
                     continue
+            return None
 
-            logger.warning(f"Failed to parse datetime string: '{final_str}' using available formats.")
+        start_dt = parse_to_datetime(date_part, start_time_str)
+        if not start_dt:
             return None
-        except Exception as e:
-            logger.error(f"Datetime error: {e}")
-            return None
+
+        end_dt = None
+        if end_time_str:
+            end_dt = parse_to_datetime(date_part, end_time_str)
+
+        return start_dt, end_dt
 
     def _extract_metadata(self, content_html):
         """
@@ -174,10 +206,12 @@ class TrumbaScraper:
                 if not content_list: continue
                 content_html = content_list[0]
 
-                dt = self._parse_date_time(content_html)
-                if not dt:
+                dt_res = self._parse_date_time(content_html)
+                if not dt_res:
                     logger.warning(f"Skipping entry {external_id}: Date parse failed")
                     continue
+
+                start_dt, end_dt = dt_res
 
                 metadata = self._extract_metadata(content_html)
 
@@ -188,8 +222,10 @@ class TrumbaScraper:
                         if fixture:
                             fixture.title = title
                             fixture.location = metadata["location"]
-                            fixture.event_date = dt
-                            fixture.event_time = dt.time()
+                            fixture.event_date = start_dt
+                            fixture.event_time = start_dt.time()
+                            if end_dt:
+                                fixture.event_end_time = end_dt.time()
                             fixture.sport = metadata["sport"]
                             fixture.opposition = metadata["opposition"]
                             fixture.team = metadata["team"]
@@ -201,8 +237,9 @@ class TrumbaScraper:
                                 external_id=external_id,
                                 title=title,
                                 location=metadata["location"],
-                                event_date=dt,
-                                event_time=dt.time(),
+                                event_date=start_dt,
+                                event_time=start_dt.time(),
+                                event_end_time=end_dt.time() if end_dt else None,
                                 sport=metadata["sport"],
                                 opposition=metadata["opposition"],
                                 team=metadata["team"],
@@ -218,8 +255,10 @@ class TrumbaScraper:
                     if fixture:
                         fixture.title = title
                         fixture.location = metadata["location"]
-                        fixture.event_date = dt
-                        fixture.event_time = dt.time()
+                        fixture.event_date = start_dt
+                        fixture.event_time = start_dt.time()
+                        if end_dt:
+                            fixture.event_end_time = end_dt.time()
                         fixture.sport = metadata["sport"]
                         fixture.opposition = metadata["opposition"]
                         fixture.team = metadata["team"]

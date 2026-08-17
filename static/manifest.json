@@ -1,15 +1,25 @@
 {
   "name": "Sports Fetcher",
   "short_name": "Sports",
+  "description": "Real-time sports fixtures and updates.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#020617",
   "theme_color": "#000000",
+  "orientation": "portrait",
+  "categories": ["sports", "utilities"],
   "icons": [
     {
       "src": "/static/FS.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/FS.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/static/FS.svg",

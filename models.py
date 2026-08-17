@@ -1,6 +1,7 @@
 import os
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import zoneinfo
 
 db = SQLAlchemy()
 
@@ -13,6 +14,7 @@ class Fixture(db.Model):
     location = db.Column(db.String(255))
     event_date = db.Column(db.DateTime, nullable=False)
     event_time = db.Column(db.Time)
+    event_end_time = db.Column(db.Time)
     sport = db.Column(db.String(100))
     opposition = db.Column(db.String(255))
     team = db.Column(db.String(100))
@@ -20,6 +22,41 @@ class Fixture(db.Model):
     last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
+        # Determine status based on current time in Sydney
+        status = "Scheduled"
+        if self.event_date:
+            try:
+                sydney_tz = zoneinfo.ZoneInfo("Australia/Sydney")
+            except Exception:
+                # Fallback if zoneinfo fails
+                sydney_tz = timezone.utc
+
+            now = datetime.now(sydney_tz)
+
+            # Combine date and time for comparison
+            # We assume the event_date/time stored in DB are in Sydney time
+            try:
+                if self.event_time:
+                    event_dt = datetime.combine(self.event_date.date(), self.event_time).replace(tzinfo=sydney_tz)
+                else:
+                    event_dt = self.event_date.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=sydney_tz)
+
+                # Use event_end_time if available, otherwise fall back to 2 hours after start
+                if self.event_end_time:
+                    event_end_dt = datetime.combine(self.event_date.date(), self.event_end_time).replace(tzinfo=sydney_tz)
+                else:
+                    event_end_dt = event_dt + timedelta(hours=2)
+
+                if now < event_dt:
+                    status = "Scheduled"
+                elif event_dt <= now <= event_end_dt:
+                    status = "Live"
+                else:
+                    status = "Finished"
+            except Exception as e:
+                print(f"[Error] Status calculation failed: {e}")
+                status = "Scheduled"
+
         return {
             "id": self.id,
             "external_id": self.external_id,
@@ -27,10 +64,12 @@ class Fixture(db.Model):
             "location": self.location,
             "event_date": self.event_date.isoformat() if self.event_date else None,
             "event_time": self.event_time.isoformat() if self.event_time else None,
+            "event_end_time": self.event_end_time.isoformat() if self.event_end_time else None,
             "sport": self.sport,
             "opposition": self.opposition,
             "team": self.team,
-            "last_updated": self.last_updated.isoformat() if self.last_updated else None
+            "last_updated": self.last_updated.isoformat() if self.last_updated else None,
+            "status": status
         }
 
 class Favourite(db.Model):
