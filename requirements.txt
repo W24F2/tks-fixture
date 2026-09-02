@@ -6,3 +6,6 @@ requests
 python-dotenv
 gunicorn
 flask-limiter
+flask-caching
+redis
+psycopg2-binary

@@ -5,10 +5,16 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#020617",
-  "theme_color": "#000000",
-  "orientation": "portrait",
+  "theme_color": "#020617",
+  "orientation": "portrait-primary",
   "categories": ["sports", "utilities"],
   "icons": [
+    {
+      "src": "/static/FS.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
     {
       "src": "/static/FS.png",
       "sizes": "512x512",
@@ -20,11 +26,16 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
-    },
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
     {
-      "src": "/static/FS.svg",
-      "sizes": "any",
-      "type": "image/svg+xml"
+      "name": "View Fixtures",
+      "short_name": "Fixtures",
+      "description": "View upcoming sports fixtures",
+      "url": "/",
+      "icons": [{ "src": "/static/FS.svg", "sizes": "192x192" }]
     }
   ]
 }
