@@ -1,0 +1,17 @@
+[Unit]
+Description=Run Sports Fetcher Scraper every 15 minutes Tue-Sat until 8 PM
+Requires=fixtures-scraper.service
+
+[Timer]
+# Run every 15 minutes Tuesday through Saturday
+OnCalendar=Tue..Sat *-*-* 00:00/15:00
+
+# Stop after 8 PM (20:00) - this is handled by the script itself
+# But we can also set an end time
+# OnCalendar=Tue..Sat *-*-* 06:00/15:00:00..20:00:00
+
+Persistent=true
+RandomizedDelaySec=1m
+
+[Install]
+WantedBy=timers.target
