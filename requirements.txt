@@ -1,8 +1,11 @@
 Flask
 Flask-SQLAlchemy
-psycopg2-binary
+oracledb
 lxml
 requests
 python-dotenv
 gunicorn
 flask-limiter
+flask-caching
+redis
+mysql-connector-python

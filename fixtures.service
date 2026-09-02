@@ -1,0 +1,32 @@
+[Unit]
+Description=Sports Fetcher Flask App
+After=network.target
+Wants=network.target
+
+[Service]
+Type=notify
+WorkingDirectory=/opt/fixtures/app
+EnvironmentFile=-/opt/fixtures/app/.env
+ExecStart=/opt/fixtures/app/venv/bin/gunicorn -c /opt/fixtures/app/gunicorn.conf.py app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+User=ubuntu
+Group=ubuntu
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fixtures-app
+
+# Resource limits for 100 concurrent users
+MemoryMax=1G
+CPUQuota=200%
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target

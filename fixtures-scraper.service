@@ -1,0 +1,22 @@
+[Unit]
+Description=Sports Fetcher Scraper Worker
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/fixtures/app
+EnvironmentFile=-/opt/fixtures/app/.env
+ExecStart=/opt/fixtures/app/venv/bin/python /opt/fixtures/app/scraper_worker.py
+User=ubuntu
+Group=ubuntu
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fixtures-scraper
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+
+# Restart policy
+Restart=no
