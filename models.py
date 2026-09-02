@@ -1,7 +1,10 @@
 import os
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timezone, timedelta
-import zoneinfo
+try:
+    import zoneinfo
+except ImportError:
+    from backports import zoneinfo
 
 db = SQLAlchemy()
 
