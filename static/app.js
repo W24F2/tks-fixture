@@ -172,9 +172,11 @@ function renderAll() {
 
     // Filter fixtures based on search term
     const filtered = allFixtures.filter(f => {
-        const matchTeam = f.team.toLowerCase().includes(searchTerm) ||
-                          f.opposition.toLowerCase().includes(searchTerm);
-        const matchTitle = f.title.toLowerCase().includes(searchTerm);
+        const team = (f.team || '').toLowerCase();
+        const opposition = (f.opposition || '').toLowerCase();
+        const title = (f.title || '').toLowerCase();
+        const matchTeam = team.includes(searchTerm) || opposition.includes(searchTerm);
+        const matchTitle = title.includes(searchTerm);
         return matchTeam || matchTitle;
     });
     console.log('[DEBUG] Filtered fixtures count:', filtered.length);
