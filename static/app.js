@@ -42,22 +42,41 @@ function getCache(key, expiry = CACHE_EXPIRY) {
 // --- Initialization ---
 
 async function initializeApp() {
-    console.log('[System] Initializing Sports Fetcher...');
+    console.log('[DEBUG] initializeApp() called');
+    console.log('[DEBUG] document.readyState:', document.readyState);
 
-    await initDeviceId();
-    await fetchFavourites();
-    await fetchFixtures();
+    try {
+        console.log('[DEBUG] Calling initDeviceId()');
+        await initDeviceId();
+        console.log('[DEBUG] initDeviceId() done, deviceId:', deviceId);
 
-    setupEventListeners();
-    renderAll();
+        console.log('[DEBUG] Calling fetchFavourites()');
+        await fetchFavourites();
+        console.log('[DEBUG] fetchFavourites() done, favourites:', favourites);
 
-    // Register Service Worker for PWA support
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/static/sw.js')
-                .then(reg => console.log('SW registered!', reg))
-                .catch(err => console.log('SW registration failed!', err));
-        });
+        console.log('[DEBUG] Calling fetchFixtures()');
+        await fetchFixtures();
+        console.log('[DEBUG] fetchFixtures() done, allFixtures length:', allFixtures.length);
+
+        console.log('[DEBUG] Calling setupEventListeners()');
+        setupEventListeners();
+        console.log('[DEBUG] setupEventListeners() done');
+
+        console.log('[DEBUG] Calling renderAll()');
+        renderAll();
+        console.log('[DEBUG] renderAll() done');
+
+        // Register Service Worker for PWA support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then(reg => console.log('SW registered!', reg))
+                    .catch(err => console.log('SW registration failed!', err));
+            });
+        }
+    } catch (e) {
+        console.error('[FATAL] initializeApp() crashed:', e);
+        showToast('App initialization failed: ' + e.message, 'error');
     }
 }
 
@@ -86,9 +105,10 @@ async function initDeviceId() {
  * Fetches all fixtures from the backend, using cache if available.
  */
 async function fetchFixtures() {
+    console.log('[DEBUG] fetchFixtures() started');
     const cached = getCache('fixtures');
     if (cached) {
-        console.log('[System] Loading fixtures from cache');
+        console.log('[DEBUG] Loading fixtures from cache, count:', cached.length);
         allFixtures = cached;
         updateStats();
         return;
@@ -96,13 +116,17 @@ async function fetchFixtures() {
 
     showLoading(true);
     try {
+        console.log('[DEBUG] Fetching from API: /api/fixtures');
         const response = await fetch(`${API_BASE}/fixtures`);
-        if (!response.ok) throw new Error('Failed to fetch fixtures');
+        console.log('[DEBUG] API response status:', response.status);
+        if (!response.ok) throw new Error('Failed to fetch fixtures: ' + response.status);
         allFixtures = await response.json();
+        console.log('[DEBUG] Got fixtures from API, count:', allFixtures.length);
+        console.log('[DEBUG] First fixture:', allFixtures[0]);
         setCache('fixtures', allFixtures);
         updateStats();
     } catch (error) {
-        console.error('[Error] Fetching fixtures:', error);
+        console.error('[ERROR] Fetching fixtures:', error);
         showToast('Failed to load fixtures.', 'error');
     } finally {
         showLoading(false);
@@ -142,6 +166,7 @@ async function fetchFavourites(bypassCache = false) {
  * Orchestrates the complete rendering of the dashboard.
  */
 function renderAll() {
+    console.log('[DEBUG] renderAll() called, allFixtures length:', allFixtures.length);
     const searchInput = document.getElementById('search-input');
     const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
 
@@ -152,10 +177,12 @@ function renderAll() {
         const matchTitle = f.title.toLowerCase().includes(searchTerm);
         return matchTeam || matchTitle;
     });
+    console.log('[DEBUG] Filtered fixtures count:', filtered.length);
 
     // Split into active and finished fixtures
     const activeFixtures = filtered.filter(f => f.status !== 'Finished');
     const finishedFixtures = filtered.filter(f => f.status === 'Finished');
+    console.log('[DEBUG] Active:', activeFixtures.length, 'Finished:', finishedFixtures.length);
 
     // Group by date for rendering
     const activeGroups = groupFixturesByDate(activeFixtures);
@@ -164,6 +191,12 @@ function renderAll() {
     // Get favourites group
     const favouriteGroups = getFavouriteGroups(filtered);
 
+    console.log('[DEBUG] Calling renderDashboard with:', {
+        favouriteGroups: favouriteGroups.length,
+        activeGroups: activeGroups.length,
+        finishedGroups: finishedGroups.length,
+        hasFixtures: allFixtures.length > 0
+    });
     renderDashboard(favouriteGroups, activeGroups, finishedGroups, allFixtures.length > 0);
 }
 
@@ -225,8 +258,13 @@ function getFavouriteGroups(fixtures) {
  * Injects the HTML into the main container.
  */
 function renderDashboard(favouriteGroups, activeGroups, finishedGroups, hasFixtures) {
+    console.log('[DEBUG] renderDashboard() called');
     const container = document.getElementById('fixtures-list');
-    if (!container) return;
+    console.log('[DEBUG] Container found:', !!container);
+    if (!container) {
+        console.error('[ERROR] #fixtures-list container not found!');
+        return;
+    }
 
     let html = '';
 
@@ -270,13 +308,11 @@ function renderDashboard(favouriteGroups, activeGroups, finishedGroups, hasFixtu
     // Empty States
     if (favouriteGroups.length === 0 && activeGroups.length === 0 && finishedGroups.length === 0) {
         if (hasFixtures) {
-            // If search returned nothing but there are fixtures
             html += `<div class="empty-state">
                 <i data-lucide="search" class="empty-icon"></i>
                 <p class="empty-text">No matches found for your search.</p>
             </div >`;
         } else {
-            // Truly empty state
             html += `<div class="empty-state">
                 <i data-lucide="calendar" class="empty-icon"></i>
                 <p class="empty-text">No fixtures available at the moment.</p>
@@ -284,7 +320,10 @@ function renderDashboard(favouriteGroups, activeGroups, finishedGroups, hasFixtu
         }
     }
 
+    console.log('[DEBUG] Generated HTML length:', html.length);
+    console.log('[DEBUG] Container before:', container.innerHTML.substring(0, 100));
     container.innerHTML = html;
+    console.log('[DEBUG] Container after:', container.innerHTML.substring(0, 100));
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
