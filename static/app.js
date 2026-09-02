@@ -41,7 +41,7 @@ function getCache(key, expiry = CACHE_EXPIRY) {
 
 // --- Initialization ---
 
-document.addEventListener('DOMContentLoaded', async () => {
+async function initializeApp() {
     console.log('[System] Initializing Sports Fetcher...');
 
     await initDeviceId();
@@ -53,13 +53,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Register Service Worker for PWA support
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/static/sw.js')
-          .then(reg => console.log('SW registered!', reg))
-          .catch(err => console.log('SW registration failed!', err));
-      });
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/static/sw.js')
+                .then(reg => console.log('SW registered!', reg))
+                .catch(err => console.log('SW registration failed!', err));
+        });
     }
-});
+}
+
+// Run on DOMContentLoaded, or immediately if DOM is already ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+    initializeApp();
+}
 
 /**
  * Ensures a unique device ID exists in localStorage.
