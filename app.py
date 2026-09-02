@@ -110,33 +110,69 @@ def delete_favourite(device_id, fixture_id):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/cron/refresh', methods=['GET'])
-def cron_refresh():
-    """
-    Endpoint for Vercel Cron Jobs.
-    Securely triggered by Vercel every 15 minutes.
-    """
-    auth_token = request.args.get("token") or request.headers.get("X-Cron-Token")
+@app.route('/api/fixtures')
+def get_fixtures():
+    """API endpoint to get fixtures in JSON format."""
+    fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
+    return jsonify([f.to_dict() for f in fixtures])
 
-    # On local development, allow refresh without token
-    is_local = os.getenv("FLASK_ENV") == "development" or os.getenv("DEBUG") == "True"
+@app.route('/api/favourites/<device_id>', methods=['GET'])
+def get_favourites(device_id):
+    """Fetch all favourited teams for a device."""
+    favourites = Favourite.query.filter_by(device_id=device_id).all()
+    return jsonify([f.to_dict() for f in favourites])
 
-    if not is_local:
-        if not CRON_SECRET or auth_token != CRON_SECRET:
-            app.logger.warning("Unauthorized attempt to trigger cron refresh.")
-            return jsonify({"error": "Unauthorized"}), 401
+@app.route('/api/favourites', methods=['POST'])
+def add_favourite():
+    """Add a new fixture to favourites."""
+    data = request.get_json()
+    if not data or 'device_id' not in data or 'fixture_id' not in data:
+        return jsonify({"error": "Missing device_id or fixture_id"}), 400
+
+    device_id = data['device_id']
+    fixture_id = data['fixture_id']
 
     try:
-        scraper = TrumbaScraper(TRUMBA_XML_URL)
-        new_count, updated_count = scraper.scrape()
-        return jsonify({
-            "status": "success",
-            "new_fixtures": new_count,
-            "updated_fixtures": updated_count
-        }), 200
+        new_favourite = Favourite(device_id=device_id, fixture_id=fixture_id)
+        db.session.add(new_favourite)
+        db.session.commit()
+        return jsonify({"status": "success"}), 201
     except Exception as e:
-        app.logger.error(f"Cron scrape failed: {e}")
+        db.session.rollback()
+        # If it's a unique constraint error, it means it's already favourited
+        err_msg = str(e).lower()
+        if 'unique constraint failed' in err_msg or 'duplicate key value' in err_msg:
+            return jsonify({"status": "already_exists"}), 200
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/favourites/<device_id>/<int:fixture_id>', methods=['DELETE'])
+def delete_favourite(device_id, fixture_id):
+    """Remove a fixture from favourites."""
+    try:
+        favourite = Favourite.query.filter_by(device_id=device_id, fixture_id=fixture_id).first()
+        if not favourite:
+            return jsonify({"error": "Favourite not found"}), 404
+
+        db.session.delete(favourite)
+        db.session.commit()
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/health')
+def health_check():
+    """Health check endpoint for monitoring."""
+    return jsonify({"status": "healthy"}), 200
+
+# Custom Error Handlers
+@app.errorhandler(404)
+def not_found(e):
+    return render_template('404.html'), 404
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return render_template('rate_limit.html'), 429
 
 @app.route('/api/health')
 def health_check():
