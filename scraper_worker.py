@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Scheduled Scraper Worker for Sports Fetcher.
-Runs every 15 minutes from Tuesday to Saturday until 8:00 PM.
-Designed to be run via systemd timer or cron.
+Runs every 15 minutes from 04:45 AM to 04:15 PM Sydney time, Tuesday through Saturday.
+Optimized for user activity hours (5 AM - 4 PM work shift).
 """
 import os
 import sys
@@ -18,7 +18,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app import create_app
 from scraper import TrumbaScraper
-from flask_caching import Cache
 
 # Configure logging
 logging.basicConfig(
@@ -30,10 +29,10 @@ logger = logging.getLogger(__name__)
 
 def is_scheduled_time():
     """
-    Check if current time is within the scheduled window:
-    Tuesday (1) to Saturday (5), until 20:00 (8 PM) Sydney time.
+    Check if current time is within the optimized window:
+    Tuesday (1) through Saturday (5), 04:45 AM to 04:15 PM Sydney time.
+    Covers user activity: 5 AM shift start through 4 PM finish.
     """
-    # Use Sydney timezone for scheduling
     try:
         sydney_tz = zoneinfo.ZoneInfo("Australia/Sydney")
     except Exception:
@@ -44,14 +43,17 @@ def is_scheduled_time():
     # Monday=0, Tuesday=1, ..., Saturday=5, Sunday=6
     # Run Tuesday (1) through Saturday (5)
     if now.weekday() < 1 or now.weekday() > 5:
-        logger.info(f"Outside scheduled days (weekday={now.weekday()}). Skipping.")
         return False
+
+    # Start window: 04:45 AM (4 * 60 + 45 = 285 minutes past midnight)
+    # End window: 04:15 PM (16 * 60 + 15 = 975 minutes past midnight)
+    minutes_since_midnight = now.hour * 60 + now.minute
     
-    # Stop after 8:00 PM (20:00)
-    if now.hour >= 20:
-        logger.info(f"After 8 PM ({now.hour}:00). Skipping.")
+    if minutes_since_midnight < 285:
         return False
-    
+    if minutes_since_midnight > 975:
+        return False
+
     return True
 
 
@@ -60,16 +62,6 @@ def run_scheduled_scrape():
     logger.info("Starting scheduled scrape...")
     
     app = create_app()
-    
-    # Create cache instance for this app
-    cache_config = {
-        "CACHE_TYPE": "RedisCache" if os.getenv("REDIS_URL") else "SimpleCache",
-        "CACHE_DEFAULT_TIMEOUT": 60,
-    }
-    if os.getenv("REDIS_URL"):
-        cache_config["CACHE_REDIS_URL"] = os.getenv("REDIS_URL")
-    
-    cache = Cache(app, config=cache_config)
     
     with app.app_context():
         try:
@@ -82,6 +74,7 @@ def run_scheduled_scrape():
             new_count, updated_count = scraper.scrape()
             
             # Invalidate cache after successful scrape
+            from app import cache
             cache.delete('api_fixtures')
             cache.delete('index_page')
             
@@ -97,18 +90,16 @@ def main():
     """Main entry point for the scraper worker."""
     logger.info("=== Sports Fetcher Scraper Worker Started ===")
     
-    if not is_scheduled_time():
-        logger.info("Not within scheduled time window. Exiting.")
-        sys.exit(0)
-    
-    success = run_scheduled_scrape()
-    
-    if success:
-        logger.info("Scraper worker completed successfully.")
-        sys.exit(0)
+    # 1. Initial Sync Check: Force scrape if flag is set (post-deployment)
+    if os.getenv('FORCE_INITIAL_SYNC') == 'true':
+        logger.warning("!!! INITIAL SYNC REQUIRED !!! Running scrape immediately to populate data.")
+        run_scheduled_scrape()
     else:
-        logger.error("Scraper worker failed.")
-        sys.exit(1)
+        # 2. Scheduled Check: Run only if within optimized window (Tue-Sat, 04:45-16:15)
+        if is_scheduled_time():
+            run_scheduled_scrape()
+        else:
+            logger.info("Outside optimized schedule window (Tue-Sat 04:45-16:15 Sydney). Exiting.")
 
 
 if __name__ == "__main__":
