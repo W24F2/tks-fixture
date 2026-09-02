@@ -9,49 +9,6 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from dotenv import load_dotenv
 
-# Load environment variables from .env
-load_dotenv()
-
-app = create_app()
-
-# Rate limiting setup
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["200 per day", "50 per minute"],
-    storage_uri="memory://"
-)
-
-# Configuration
-TRUMBA_XML_URL = os.getenv('TRUMBA_XML_URL')
-CRON_SECRET = os.getenv("CRON_SECRET")
-
-from itertools import groupby
-
-def run_background_scraper(app_instance):
-    """Background task to scrape data every 15 minutes."""
-    with app_instance.app_context():
-        while True:
-            try:
-                print("\n[Background Task] Starting scheduled refresh...")
-                scraper = TrumbaScraper(TRUMBA_XML_URL)
-                new_count, updated_count = scraper.scrape()
-                print(f"[Background Task] Success. New: {new_count}, Updated: {updated_count}\n")
-            except Exception as e:
-                print(f"\n[Background Task] Error: {e}\n")
-
-            # Sleep for 15 minutes (900 seconds)
-            time.sleep(900)
-
-import os
-from flask import Flask, jsonify, render_template, request
-from database import create_app
-from models import db, Fixture, Favourite
-from scraper import TrumbaScraper
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-from dotenv import load_dotenv
-
 
 # --- Initialization ---
 
@@ -102,9 +59,9 @@ def index():
     if fixtures:
         last_updated = max(f.last_updated for f in fixtures)
 
-    # Group fixtures by date (groupby requires imports to be at top level, fixed above)
+    # Group fixtures by date
     grouped_fixtures = []
-    from itertools import groupby # Import locally to ensure availability
+    from itertools import groupby
     for date, group in groupby(sorted(fixtures, key=lambda x: x.event_date)):
         grouped_fixtures.append((date, list(group)))
 
@@ -192,37 +149,4 @@ if __name__ == "__main__":
         print("[System] Background scraper thread started (15m interval).")
 
     # Run the web application using a dedicated port for local testing
-    app.run(debug=True, port=5001)
-
-# Custom Error Handlers
-@app.errorhandler(404)
-def not_found(e):
-    return render_template('404.html'), 404
-
-@app.errorhandler(429)
-def ratelimit_handler(e):
-    return render_template('rate_limit.html'), 429
-
-@app.route('/api/health')
-def health_check():
-    """Health check endpoint for monitoring."""
-    return jsonify({"status": "healthy"}), 200
-
-# Custom Error Handlers
-@app.errorhandler(404)
-def not_found(e):
-    return render_template('404.html'), 404
-
-@app.errorhandler(429)
-def ratelimit_handler(e):
-    return render_template('rate_limit.html'), 429
-
-if __name__ == "__main__":
-    # 1. Start the background scraper thread ONLY when running locally
-    # We check WERKZEUG_RUN_MAIN to prevent the thread from starting twice in debug mode
-    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not os.environ.get('FLASK_DEBUG'):
-        scraper_thread = threading.Thread(target=run_background_scraper, args=(app,), daemon=True)
-        scraper_thread.start()
-        print("[System] Background scraper thread started (15m interval).")
-
     app.run(debug=True, port=5001)
