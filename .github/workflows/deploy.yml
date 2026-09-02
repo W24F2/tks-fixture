@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to OCI
+      - name: Deploy
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.OCI_HOST }}
@@ -27,13 +27,7 @@ jobs:
             fi
 
             cd "$APP_DIR"
-
             git fetch origin "${{ github.ref_name }}"
             git reset --hard "origin/${{ github.ref_name }}"
-
-
             "$APP_DIR/venv/bin/pip" install -r requirements.txt
-
-
             sudo systemctl restart "$SERVICE"
-            sudo systemctl status "$SERVICE" --no-pager
