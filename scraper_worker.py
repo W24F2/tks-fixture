@@ -104,9 +104,12 @@ def run_scheduled_scrape():
             new_count, updated_count = scraper.scrape()
             
             # Invalidate cache after successful scrape
-            from app import cache
-            cache.delete('api_fixtures')
-            cache.delete('index_page')
+            cache = app.extensions.get('cache')
+            if cache:
+                cache.delete('api_fixtures')
+                cache.delete('index_page')
+            else:
+                logger.warning("Cache not available in app extensions; skipping invalidation")
             
             logger.info(f"Scrape completed. New: {new_count}, Updated: {updated_count}")
             return True
