@@ -2,7 +2,7 @@
 """
 Scheduled Scraper Worker for Sports Fetcher.
 Runs every 15 minutes from 04:45 AM to 04:15 PM Sydney time, Tuesday through Saturday.
-Optimized for user activity hours (5 AM - 4 PM work shift).
+Automatically catches up on first launch / stale data / empty database.
 """
 import os
 import sys
@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app import create_app
 from scraper import TrumbaScraper
+from models import Fixture  # Import model to check DB state
 
 # Configure logging
 logging.basicConfig(
@@ -31,7 +32,6 @@ def is_scheduled_time():
     """
     Check if current time is within the optimized window:
     Tuesday (1) through Saturday (5), 04:45 AM to 04:15 PM Sydney time.
-    Covers user activity: 5 AM shift start through 4 PM finish.
     """
     try:
         sydney_tz = zoneinfo.ZoneInfo("Australia/Sydney")
@@ -41,25 +41,55 @@ def is_scheduled_time():
     now = datetime.now(sydney_tz)
     
     # Monday=0, Tuesday=1, ..., Saturday=5, Sunday=6
-    # Run Tuesday (1) through Saturday (5)
     if now.weekday() < 1 or now.weekday() > 5:
         return False
 
-    # Start window: 04:45 AM (4 * 60 + 45 = 285 minutes past midnight)
-    # End window: 04:15 PM (16 * 60 + 15 = 975 minutes past midnight)
     minutes_since_midnight = now.hour * 60 + now.minute
     
-    if minutes_since_midnight < 285:
-        return False
-    if minutes_since_midnight > 975:
+    # 04:45 AM = 285 min, 04:15 PM = 975 min
+    if minutes_since_midnight < 285 or minutes_since_midnight > 975:
         return False
 
     return True
 
 
+def needs_catch_up_scrape(app):
+    """
+    Determine if an immediate scrape is needed:
+    - Table is empty (fresh deploy / new DB)
+    - Data is stale (> 24 hours since last update)
+    """
+    with app.app_context():
+        try:
+            # Check if any fixtures exist
+            count = Fixture.query.count()
+            if count == 0:
+                logger.info("Database empty — triggering initial catch-up scrape.")
+                return True
+
+            # Check freshness of latest record
+            latest = Fixture.query.order_by(Fixture.updated_at.desc()).first()
+            if latest and latest.updated_at:
+                # Ensure timezone awareness for comparison
+                latest_update = latest.updated_at
+                if latest_update.tzinfo is None:
+                    latest_update = latest_update.replace(tzinfo=timezone.utc)
+                
+                age = datetime.now(timezone.utc) - latest_update
+                if age > timedelta(hours=24):
+                    logger.warning(f"Data stale ({age} old) — triggering catch-up scrape.")
+                    return True
+            
+            return False
+        except Exception as e:
+            # If DB not ready or schema missing, assume we need to scrape
+            logger.warning(f"DB check failed ({e}) — assuming catch-up needed.")
+            return True
+
+
 def run_scheduled_scrape():
     """Run a single scrape cycle."""
-    logger.info("Starting scheduled scrape...")
+    logger.info("Starting scrape cycle...")
     
     app = create_app()
     
@@ -78,7 +108,7 @@ def run_scheduled_scrape():
             cache.delete('api_fixtures')
             cache.delete('index_page')
             
-            logger.info(f"Scrape completed successfully. New: {new_count}, Updated: {updated_count}")
+            logger.info(f"Scrape completed. New: {new_count}, Updated: {updated_count}")
             return True
             
         except Exception as e:
@@ -90,16 +120,22 @@ def main():
     """Main entry point for the scraper worker."""
     logger.info("=== Sports Fetcher Scraper Worker Started ===")
     
-    # 1. Initial Sync Check: Force scrape if flag is set (post-deployment)
-    if os.getenv('FORCE_INITIAL_SYNC') == 'true':
-        logger.warning("!!! INITIAL SYNC REQUIRED !!! Running scrape immediately to populate data.")
+    app = create_app()
+    
+    # 1. SELF-HEALING: Run immediately if DB empty or data stale (>24h)
+    # This covers: new deploys, failed scrapes, manual resets, first run.
+    if needs_catch_up_scrape(app):
+        logger.info("Catch-up condition met — running immediate scrape.")
+        run_scheduled_scrape()
+        # After catch-up, we still respect schedule for *subsequent* runs
+        # (systemd timer will re-invoke us in 15 min if in window)
+        return
+
+    # 2. SCHEDULED: Only run if within optimized window (Tue-Sat 04:45-16:15)
+    if is_scheduled_time():
         run_scheduled_scrape()
     else:
-        # 2. Scheduled Check: Run only if within optimized window (Tue-Sat, 04:45-16:15)
-        if is_scheduled_time():
-            run_scheduled_scrape()
-        else:
-            logger.info("Outside optimized schedule window (Tue-Sat 04:45-16:15 Sydney). Exiting.")
+        logger.info("Outside schedule window (Tue-Sat 04:45-16:15 Sydney) and data is fresh. Exiting.")
 
 
 if __name__ == "__main__":
