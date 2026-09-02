@@ -54,10 +54,10 @@ def index():
     if fixtures:
         last_updated = max(f.last_updated for f in fixtures)
 
-    # Group fixtures by date
+    # Group fixtures by date (date portion only)
     grouped_fixtures = []
     from itertools import groupby
-    for date, group in groupby(sorted(fixtures, key=lambda x: x.event_date)):
+    for date, group in groupby(fixtures, key=lambda x: x.event_date.date()):
         grouped_fixtures.append((date, list(group)))
 
     return render_template('index.html', grouped_fixtures=grouped_fixtures, last_updated=last_updated)
