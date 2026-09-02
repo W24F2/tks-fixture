@@ -8,4 +8,4 @@ gunicorn
 flask-limiter
 flask-caching
 redis
-psycopg2-binary
+mysql-connector-python
