@@ -1,0 +1,39 @@
+name: Deploy to OCI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to OCI
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script: |
+            if [ "${{ github.ref_name }}" = "main" ]; then
+              APP_DIR="/opt/fixtures/app"
+              SERVICE="fixtures"
+            else
+              APP_DIR="/opt/fixtures/app-dev"
+              SERVICE="fixtures-dev"
+            fi
+
+            cd "$APP_DIR"
+
+            git fetch origin "${{ github.ref_name }}"
+            git reset --hard "origin/${{ github.ref_name }}"
+
+
+            "$APP_DIR/venv/bin/pip" install -r requirements.txt
+
+
+            sudo systemctl restart "$SERVICE"
+            sudo systemctl status "$SERVICE" --no-pager
