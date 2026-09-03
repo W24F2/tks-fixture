@@ -10,6 +10,7 @@ env:
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "24"
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   lint-and-test:
@@ -38,8 +39,7 @@ jobs:
         run: mypy app.py models.py database.py scraper.py scraper_worker.py || true
 
       - name: Run Python tests
-        run: |
-          pytest -v --tb=short || echo "No tests found, skipping"
+        run: pytest -v --tb=short
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -47,14 +47,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Cache frontend dependencies
-        uses: actions/cache@v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
 
       - name: Install frontend dependencies
         working-directory: ./frontend

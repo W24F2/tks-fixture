@@ -69,10 +69,10 @@ def needs_catch_up_scrape(app):
                 return True
 
             # Check freshness of latest record
-            latest = Fixture.query.order_by(Fixture.updated_at.desc()).first()
-            if latest and latest.updated_at:
+            latest = Fixture.query.order_by(Fixture.last_updated.desc()).first()
+            if latest and latest.last_updated:
                 # Ensure timezone awareness for comparison
-                latest_update = latest.updated_at
+                latest_update = latest.last_updated
                 if latest_update.tzinfo is None:
                     latest_update = latest_update.replace(tzinfo=timezone.utc)
                 
