@@ -19,11 +19,12 @@ sports_fixtures.db
 .vscode/
 
 # Node / Frontend
-node_modules/
-package-lock.json
-package.json
-vercel.json
-.vercel/
+frontend/node_modules/
+frontend/package-lock.json
+frontend/dist/
+
+# Build artifacts
+static/dist/
 
 # OS
 .DS_Store

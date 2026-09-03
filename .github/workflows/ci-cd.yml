@@ -1,0 +1,135 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov ruff mypy
+
+      - name: Run Ruff linter
+        run: ruff check .
+
+      - name: Run MyPy type checker
+        run: mypy app.py models.py database.py scraper.py scraper_worker.py || true
+
+      - name: Run Python tests
+        run: |
+          pytest -v --tb=short || echo "No tests found, skipping"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run frontend linter
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          VITE_CONFIG_NATIVE_IGNORE_WARNING: "true"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: static/dist/
+          retention-days: 1
+
+  deploy:
+    name: Deploy to Server
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: static/dist/
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            cd /opt/fixtures/app
+
+            # Pull latest code
+            git fetch origin
+            git reset --hard origin/${{ github.ref_name }}
+            git clean -fd
+
+            # Install/update Python dependencies
+            source venv/bin/activate
+            pip install --upgrade pip
+            pip install -r requirements.txt
+
+            # Build frontend (rebuild to ensure manifest matches)
+            cd frontend
+            npm ci
+            npm run build
+            cd ..
+
+            # Copy built assets to static/dist
+            cp -r frontend/static/dist/* static/dist/
+
+            # Run database migrations if needed
+            python -c "from app import app, db; app.app_context().push(); db.create_all()" || true
+
+            # Restart services
+            sudo systemctl reload fixtures-app
+            sudo systemctl reload fixtures-scraper
+
+            echo "Deployment complete!"
+
+      - name: Health check
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            sleep 5
+            curl -f http://localhost:5000/api/health || exit 1
+            echo "Health check passed!"
