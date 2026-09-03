@@ -13,7 +13,7 @@ import requests
 try:
     import zoneinfo
 except (KeyError, OSError):
-    from backports import zoneinfo
+    from backports import zoneinfo  # type: ignore[attr-defined,no-redef,import-untyped]
 
 # Add the project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

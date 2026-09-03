@@ -2,14 +2,14 @@ from datetime import datetime, timedelta, timezone
 
 from flask_sqlalchemy import SQLAlchemy
 
+db = SQLAlchemy()
+
 try:
     import zoneinfo
 except (KeyError, OSError):
-    from backports import zoneinfo
+    from backports import zoneinfo  # type: ignore[attr-defined,no-redef,import-untyped]
 
-db = SQLAlchemy()
-
-class Fixture(db.Model):
+class Fixture(db.Model):  # type: ignore[name-defined]
     __tablename__ = 'fixtures'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -78,7 +78,7 @@ class Fixture(db.Model):
             "status": status
         }
 
-class Favourite(db.Model):
+class Favourite(db.Model):  # type: ignore[name-defined]
     __tablename__ = 'favourites'
 
     id = db.Column(db.Integer, primary_key=True)

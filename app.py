@@ -42,7 +42,7 @@ cache_config = {
     "CACHE_DEFAULT_TIMEOUT": 60,
 }
 if os.getenv("REDIS_URL"):
-    cache_config["CACHE_REDIS_URL"] = os.getenv("REDIS_URL")
+    cache_config["CACHE_REDIS_URL"] = os.getenv("REDIS_URL")  # type: ignore[assignment]
 
 cache = Cache(app, config=cache_config)
 
