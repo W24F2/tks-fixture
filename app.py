@@ -1,13 +1,15 @@
 import os
 import threading
 import time
-from flask import Flask, jsonify, render_template, request
+import json
+from flask import Flask, jsonify, render_template, request, send_from_directory
 from database import create_app
 from models import db, Fixture, Favourite
 from scraper import TrumbaScraper
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
+from flask_compress import Compress
 from dotenv import load_dotenv
 
 
@@ -18,6 +20,20 @@ load_dotenv()
 
 app = create_app()
 
+# Vite manifest for cache-busted assets
+def load_vite_manifest():
+    manifest_path = os.path.join(app.static_folder, 'dist', '.vite', 'manifest.json')
+    if os.path.exists(manifest_path):
+        with open(manifest_path) as f:
+            return json.load(f)
+    return {}
+
+vite_manifest = load_vite_manifest()
+
+@app.context_processor
+def inject_vite_assets():
+    return dict(vite_manifest=vite_manifest)
+
 # Cache configuration (Redis for production, SimpleCache for dev)
 cache_config = {
     "CACHE_TYPE": "RedisCache" if os.getenv("REDIS_URL") else "SimpleCache",
@@ -27,6 +43,9 @@ if os.getenv("REDIS_URL"):
     cache_config["CACHE_REDIS_URL"] = os.getenv("REDIS_URL")
 
 cache = Cache(app, config=cache_config)
+
+# Response compression
+Compress(app)
 
 # Rate limiting setup (Redis for production, memory for dev)
 limiter_storage = os.getenv("REDIS_URL") or "memory://"
@@ -41,27 +60,26 @@ limiter = Limiter(
 TRUMBA_XML_URL = os.getenv('TRUMBA_XML_URL')
 
 
-# --- Routes ---
+# --- Serve React SPA ---
 
-@app.route('/')
-@cache.cached(timeout=60, key_prefix='index_page')
-def index():
-    """Main dashboard view with caching."""
-    fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_react(path):
+    """Serve React SPA for all non-API routes."""
+    # Let API routes handle themselves
+    if path.startswith('api/'):
+        return jsonify({"error": "Not found"}), 404
+    
+    # Serve static files directly
+    static_file_path = os.path.join(app.static_folder, path)
+    if path and os.path.exists(static_file_path) and os.path.isfile(static_file_path):
+        return send_from_directory(app.static_folder, path)
+    
+    # Serve React index.html for all other routes (SPA routing)
+    return render_template('spa.html')
 
-    # Get the most recent update time from any fixture
-    last_updated = None
-    if fixtures:
-        last_updated = max(f.last_updated for f in fixtures)
 
-    # Group fixtures by date (date portion only)
-    grouped_fixtures = []
-    from itertools import groupby
-    for date, group in groupby(fixtures, key=lambda x: x.event_date.date()):
-        grouped_fixtures.append((date, list(group)))
-
-    return render_template('index.html', grouped_fixtures=grouped_fixtures, last_updated=last_updated)
-
+# --- API Routes ---
 
 @app.route('/api/fixtures')
 @cache.cached(timeout=30, key_prefix='api_fixtures')
@@ -70,59 +88,67 @@ def get_fixtures():
     fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
     return jsonify([f.to_dict() for f in fixtures])
 
-@app.route('/api/favourites/<device_id>', methods=['GET'])
-def get_favourites(device_id):
-    """Fetch all favourited teams for a device."""
-    favourites = Favourite.query.filter_by(device_id=device_id).all()
+
+@app.route('/api/favourites', methods=['GET'])
+def get_favourites():
+    """Fetch all favourites."""
+    favourites = Favourite.query.all()
     return jsonify([f.to_dict() for f in favourites])
 
-@app.route('/api/favourites', methods=['POST'])
-def add_favourite():
-    """Add a new fixture to favourites."""
-    data = request.get_json()
-    if not data or 'device_id' not in data or 'fixture_id' not in data:
-        return jsonify({"error": "Missing device_id or fixture_id"}), 400
 
-    device_id = data['device_id']
-    fixture_id = data['fixture_id']
-
+@app.route('/api/favourites/<int:fixture_id>', methods=['POST'])
+def toggle_favourite(fixture_id):
+    """Add or remove a fixture from favourites."""
     try:
-        new_favourite = Favourite(device_id=device_id, fixture_id=fixture_id)
-        db.session.add(new_favourite)
-        db.session.commit()
+        favourite = Favourite.query.filter_by(fixture_id=fixture_id).first()
         
-        # Invalidate cache for fixtures list
-        cache.delete('api_fixtures')
-        cache.delete('index_page')
-        
-        return jsonify({"status": "success"}), 201
+        if favourite:
+            # Remove from favourites
+            db.session.delete(favourite)
+            db.session.commit()
+            return jsonify({"status": "removed", "fixture_id": fixture_id}), 200
+        else:
+            # Add to favourites
+            new_favourite = Favourite(fixture_id=fixture_id)
+            db.session.add(new_favourite)
+            db.session.commit()
+            return jsonify({"status": "added", "fixture_id": fixture_id, "id": new_favourite.id}), 201
+            
     except Exception as e:
         db.session.rollback()
-        # Catch unique constraint errors from multiple database types (Oracle, MySQL, PgSQL)
         err_msg = str(e).lower()
         if 'unique constraint failed' in err_msg or 'duplicate key value' in err_msg or 'integrity error' in err_msg:
             return jsonify({"status": "already_exists"}), 200
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/favourites/<device_id>/<int:fixture_id>', methods=['DELETE'])
-def delete_favourite(device_id, fixture_id):
-    """Remove a fixture from favourites."""
+
+@app.route('/api/favourites/<int:favourite_id>', methods=['DELETE'])
+def delete_favourite(favourite_id):
+    """Remove a fixture from favourites by favourite ID."""
     try:
-        favourite = Favourite.query.filter_by(device_id=device_id, fixture_id=fixture_id).first()
+        favourite = Favourite.query.get(favourite_id)
         if not favourite:
             return jsonify({"error": "Favourite not found"}), 404
 
         db.session.delete(favourite)
         db.session.commit()
         
-        # Invalidate cache
-        cache.delete('api_fixtures')
-        cache.delete('index_page')
-        
         return jsonify({"status": "success"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/fixtures/refresh', methods=['POST'])
+def refresh_fixtures():
+    """Trigger a fixture refresh."""
+    try:
+        scraper = TrumbaScraper()
+        count = scraper.scrape_and_store()
+        return jsonify({"message": f"Refreshed {count} fixtures"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/health')
 def health_check():
@@ -134,11 +160,12 @@ def health_check():
 
 @app.errorhandler(404)
 def not_found(e):
-    return render_template('404.html'), 404
+    return jsonify({"error": "Not found"}), 404
+
 
 @app.errorhandler(429)
 def ratelimit_handler(e):
-    return render_template('rate_limit.html'), 429
+    return jsonify({"error": "Rate limit exceeded"}), 429
 
 
 # --- Cache Invalidation Helper ---
@@ -146,7 +173,6 @@ def ratelimit_handler(e):
 def invalidate_fixture_cache():
     """Call this after scraping to clear cached data."""
     cache.delete('api_fixtures')
-    cache.delete('index_page')
 
 
 # --- Local Execution Entry Point ---

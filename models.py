@@ -15,7 +15,7 @@ class Fixture(db.Model):
     external_id = db.Column(db.String(100), unique=True, nullable=False)
     title = db.Column(db.String(255), nullable=False)
     location = db.Column(db.String(255))
-    event_date = db.Column(db.DateTime, nullable=False)
+    event_date = db.Column(db.DateTime, nullable=False, index=True)
     event_time = db.Column(db.Time)
     event_end_time = db.Column(db.Time)
     sport = db.Column(db.String(100))
@@ -23,6 +23,10 @@ class Fixture(db.Model):
     team = db.Column(db.String(100))
     raw_content = db.Column(db.Text)  # Store original HTML for fallback/debugging
     last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.Index('ix_fixtures_event_date', 'event_date'),
+    )
 
     def to_dict(self):
         # Determine status based on current time in Sydney
@@ -79,7 +83,7 @@ class Favourite(db.Model):
     __tablename__ = 'favourites'
 
     id = db.Column(db.Integer, primary_key=True)
-    device_id = db.Column(db.String(36), nullable=False)
+    device_id = db.Column(db.String(36), nullable=True)
     fixture_id = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
