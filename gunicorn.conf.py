@@ -12,9 +12,9 @@ backlog = 2048
 # Worker processes
 # Formula: (2 * CPU cores) + 1 for sync workers
 # For gthread workers: 2-4 workers with multiple threads each
-workers = int(os.getenv("GUNICORN_WORKERS", multiprocessing.cpu_count() * 2 + 1))
+workers = int(os.getenv("GUNICORN_WORKERS", str(multiprocessing.cpu_count() * 2 + 1)))
 worker_class = os.getenv("GUNICORN_WORKER_CLASS", "gthread")
-threads = int(os.getenv("GUNICORN_THREADS", 4))
+threads = int(os.getenv("GUNICORN_THREADS", "4"))
 worker_connections = 1000
 
 # Timeouts

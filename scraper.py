@@ -1,11 +1,13 @@
-import os
-import requests
 import logging
+import os
 import re
 from datetime import datetime, timezone
+
+import requests
 from lxml import etree, html
-from sqlalchemy.exc import IntegrityError
-from models import db, Fixture
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
+from models import Fixture, db
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -28,7 +30,7 @@ class TrumbaScraper:
             # Replace common HTML entities/whitespace issues
             text = text.replace('\xa0', ' ')
             return ' '.join(text.split())
-        except Exception as e:
+        except (etree.Error, AttributeError) as e:
             logger.debug(f"lxml cleaning failed, falling back to regex: {e}")
             # Fallback to regex-based cleaning
             clean_text = re.sub('<[^<]+?>', ' ', content_html)
@@ -124,7 +126,8 @@ class TrumbaScraper:
             ]
             for fmt in formats:
                 try:
-                    return datetime.strptime(final_str, fmt)
+                    dt = datetime.strptime(final_str, fmt)  # noqa: DTZ007
+                    return dt.replace(tzinfo=timezone.utc)
                 except ValueError:
                     continue
             return None
@@ -268,7 +271,7 @@ class TrumbaScraper:
                     else:
                         logger.error(f"Failed to retry update for {external_id} after IntegrityError")
 
-            except Exception as e:
+            except (SQLAlchemyError, ValueError, KeyError) as e:
                 logger.error(f"Error processing entry {external_id if external_id else 'unknown'}: {e}")
                 continue
 

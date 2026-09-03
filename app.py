@@ -1,17 +1,19 @@
+import json
 import os
 import threading
-import time
-import json
-from flask import Flask, jsonify, render_template, request, send_from_directory
-from database import create_app
-from models import db, Fixture, Favourite
-from scraper import TrumbaScraper
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+
+import requests
+from dotenv import load_dotenv
+from flask import jsonify, render_template, send_from_directory
 from flask_caching import Cache
 from flask_compress import Compress
-from dotenv import load_dotenv
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from sqlalchemy.exc import SQLAlchemyError
 
+from database import create_app
+from models import Favourite, Fixture, db
+from scraper import TrumbaScraper
 
 # --- Initialization ---
 
@@ -32,7 +34,7 @@ vite_manifest = load_vite_manifest()
 
 @app.context_processor
 def inject_vite_assets():
-    return dict(vite_manifest=vite_manifest)
+    return {"vite_manifest": vite_manifest}
 
 # Cache configuration (Redis for production, SimpleCache for dev)
 cache_config = {
@@ -114,7 +116,7 @@ def toggle_favourite(fixture_id):
             db.session.commit()
             return jsonify({"status": "added", "fixture_id": fixture_id, "id": new_favourite.id}), 201
             
-    except Exception as e:
+    except (SQLAlchemyError, ValueError, KeyError) as e:
         db.session.rollback()
         err_msg = str(e).lower()
         if 'unique constraint failed' in err_msg or 'duplicate key value' in err_msg or 'integrity error' in err_msg:
@@ -134,7 +136,7 @@ def delete_favourite(favourite_id):
         db.session.commit()
         
         return jsonify({"status": "success"}), 200
-    except Exception as e:
+    except (SQLAlchemyError, ValueError) as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
@@ -146,7 +148,7 @@ def refresh_fixtures():
         scraper = TrumbaScraper()
         count = scraper.scrape_and_store()
         return jsonify({"message": f"Refreshed {count} fixtures"}), 200
-    except Exception as e:
+    except (ValueError, RuntimeError, requests.RequestException) as e:
         return jsonify({"error": str(e)}), 500
 
 
@@ -185,7 +187,7 @@ if __name__ == "__main__":
 
     # Start the background scraper thread ONLY when running locally
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not os.environ.get('FLASK_DEBUG'):
-        from scraper_worker import run_scheduled_scrape, is_scheduled_time
+        from scraper_worker import is_scheduled_time, run_scheduled_scrape
         if is_scheduled_time():
             scraper_thread = threading.Thread(target=lambda: run_scheduled_scrape() or None, daemon=True)
             scraper_thread.start()

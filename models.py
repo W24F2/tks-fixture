@@ -1,9 +1,10 @@
-import os
+from datetime import datetime, timedelta, timezone
+
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, timezone, timedelta
+
 try:
     import zoneinfo
-except ImportError:
+except (KeyError, OSError):
     from backports import zoneinfo
 
 db = SQLAlchemy()
@@ -24,9 +25,7 @@ class Fixture(db.Model):
     raw_content = db.Column(db.Text)  # Store original HTML for fallback/debugging
     last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    __table_args__ = (
-        db.Index('ix_fixtures_event_date', 'event_date'),
-    )
+    __table_args__ = ()
 
     def to_dict(self):
         # Determine status based on current time in Sydney
@@ -34,7 +33,7 @@ class Fixture(db.Model):
         if self.event_date:
             try:
                 sydney_tz = zoneinfo.ZoneInfo("Australia/Sydney")
-            except Exception:
+            except (KeyError, OSError):
                 # Fallback if zoneinfo fails
                 sydney_tz = timezone.utc
 
@@ -60,7 +59,7 @@ class Fixture(db.Model):
                     status = "Live"
                 else:
                     status = "Finished"
-            except Exception as e:
+            except (ValueError, AttributeError) as e:
                 print(f"[Error] Status calculation failed: {e}")
                 status = "Scheduled"
 
