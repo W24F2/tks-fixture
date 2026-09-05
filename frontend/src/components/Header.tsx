@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, RefreshCw, Zap, Heart, Calendar, X, List } from "lucide-react";
+import { Search, RefreshCw, Zap, Heart, Calendar, X, List, Clock } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -11,10 +11,11 @@ interface HeaderProps {
   onRefresh: () => void;
   isRefreshing: boolean;
   favouriteCount: number;
-  onFilterChange: (filter: "all" | "favourites" | "upcoming" | "live") => void;
-  activeFilter: "all" | "favourites" | "upcoming" | "live";
+  onFilterChange: (filter: "all" | "favourites" | "upcoming" | "live" | "past") => void;
+  activeFilter: "all" | "favourites" | "upcoming" | "live" | "past";
   upcomingCount: number;
   liveCount: number;
+  pastCount: number;
   totalCount: number;
   searchQuery: string;
   onSearchChange: (value: string) => void;
@@ -29,6 +30,7 @@ export function Header({
   activeFilter,
   upcomingCount,
   liveCount,
+  pastCount,
   totalCount,
   searchQuery,
   onSearchChange,
@@ -52,6 +54,7 @@ export function Header({
     { value: "all" as const, label: "All", count: totalCount, icon: List },
     { value: "upcoming" as const, label: "Upcoming", count: upcomingCount, icon: Calendar },
     { value: "live" as const, label: "Live", count: liveCount, icon: Zap },
+    { value: "past" as const, label: "Past", count: pastCount, icon: Clock },
     { value: "favourites" as const, label: "Favourites", count: favouriteCount, icon: Heart },
   ];
 

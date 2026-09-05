@@ -11,9 +11,12 @@ import { Skeleton } from "./ui/Skeleton";
 
 interface FixtureListProps {
   groups: FixtureGroup[];
-  onToggleFavourite: (fixtureId: number, isFavourite: boolean) => void;
+  onToggleFavourite: (fixtureId: number) => void;
   isLoading?: boolean;
   emptyMessage?: string;
+  newEventIds?: Set<number>;
+  onClearNewEvents?: () => void;
+  isPast?: boolean;
 }
 
 const itemVariants: Variants = {
@@ -40,6 +43,9 @@ export function FixtureList({
   onToggleFavourite,
   isLoading = false,
   emptyMessage = "No fixtures found",
+  newEventIds,
+  onClearNewEvents,
+  isPast,
 }: FixtureListProps) {
   const hasAnimatedRef = useRef(false);
 
@@ -119,6 +125,9 @@ export function FixtureList({
                 onToggleFavourite={onToggleFavourite}
                 index={fixtureIndex}
                 isFirstMount={isFirstMount}
+                isNew={newEventIds?.has(fixture.id)}
+                onClearNewEvents={onClearNewEvents}
+                isPast={isPast}
               />
             ))}
           </div>

@@ -1,35 +1,67 @@
 import type { Fixture, FixtureGroup, FavouriteResponse, ApiResponse } from "@/types/fixture";
-import { getDeviceId } from "./device";
 
 const API_BASE = "/api";
 
+const cache = new Map<string, { data: unknown; timestamp: number; etag?: string }>();
+const CACHE_DURATION = 30 * 1000;
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<ApiResponse<T>> {
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...options?.headers as Record<string, string>,
+    };
+
+    const cached = cache.get(url);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION && cached.etag) {
+      headers['If-None-Match'] = cached.etag;
+    }
+
     const response = await fetch(url, {
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+      headers,
       ...options,
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      return { error: data.error || `HTTP ${response.status}` };
+    if (response.status === 304 && cached) {
+      return { data: cached.data as T };
     }
 
-    return { data };
+    const text = await response.text();
+    let data: unknown;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      return { error: `Invalid JSON response: ${text.slice(0, 100)}` };
+    }
+
+    if (!response.ok) {
+      return { error: (data as { error?: string })?.error || `HTTP ${response.status}` };
+    }
+
+    const etag = response.headers.get('ETag') || undefined;
+    cache.set(url, { data, timestamp: Date.now(), etag });
+
+    return { data: data as T };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Network error" };
   }
 }
 
+export function clearCache(): void {
+  cache.clear();
+}
+
+export function getCachedData<T>(url: string): T | null {
+  const cached = cache.get(url);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    return cached.data as T;
+  }
+  return null;
+}
+
 function getAuthHeaders(): HeadersInit {
-  const deviceId = getDeviceId();
   return {
     "Content-Type": "application/json",
-    "X-Device-ID": deviceId,
   };
 }
 
@@ -38,29 +70,8 @@ export const api = {
     return fetchJson<Fixture[]>(`${API_BASE}/fixtures`);
   },
 
-  async getFavourites(): Promise<ApiResponse<FavouriteResponse[]>> {
-    const deviceId = getDeviceId();
-    return fetchJson<FavouriteResponse[]>(`${API_BASE}/favourites/${deviceId}`);
-  },
-
-  async addFavourite(fixtureId: number): Promise<ApiResponse<FavouriteResponse>> {
-    const deviceId = getDeviceId();
-    return fetchJson<FavouriteResponse>(`${API_BASE}/favourites`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ device_id: deviceId, fixture_id: fixtureId }),
-    });
-  },
-
-  async removeFavourite(fixtureId: number): Promise<ApiResponse<void>> {
-    const deviceId = getDeviceId();
-    return fetchJson<void>(`${API_BASE}/favourites/${deviceId}/${fixtureId}`, {
-      method: "DELETE",
-      headers: getAuthHeaders(),
-    });
-  },
-
   async refreshFixtures(): Promise<ApiResponse<{ message: string }>> {
+    clearCache();
     return fetchJson<{ message: string }>(`${API_BASE}/fixtures/refresh`, {
       method: "POST",
     });

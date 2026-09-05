@@ -1,17 +1,21 @@
 "use client";
 
 import { motion, type Variants } from "framer-motion";
-import { MapPin, Clock, Shield, Calendar, Star } from "lucide-react";
+import { MapPin, Clock, Shield, Calendar, Star, Sparkles } from "lucide-react";
 import { Fixture } from "@/types/fixture";
-import { formatTime, getStatusBadge } from "@/lib/api";
+import { getStatusBadge } from "@/lib/api";
+import { formatSydneyTime, formatSydneyDate } from "@/lib/timezone";
 import { Card, CardContent } from "./ui/Card";
 import { cn } from "@/lib/utils";
 
 interface FixtureCardProps {
-  fixture: Fixture;
-  onToggleFavourite: (fixtureId: number, isFavourite: boolean) => void;
+  fixture: Fixture & { is_new?: boolean };
+  onToggleFavourite: (fixtureId: number) => void;
   index: number;
   isFirstMount?: boolean;
+  isNew?: boolean;
+  onClearNewEvents?: () => void;
+  isPast?: boolean;
 }
 
 const statusIcons = {
@@ -33,9 +37,17 @@ const cardVariants: Variants = {
   },
 };
 
-export function FixtureCard({ fixture, onToggleFavourite, index, isFirstMount = true }: FixtureCardProps) {
+export function FixtureCard({ fixture, onToggleFavourite, index, isFirstMount = true, isNew, onClearNewEvents, isPast }: FixtureCardProps) {
   const StatusIcon = statusIcons[fixture.status] || Calendar;
   const { label, className: badgeClass } = getStatusBadge(fixture.status);
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleFavourite(fixture.id);
+    if (isNew && onClearNewEvents) {
+      onClearNewEvents();
+    }
+  };
 
   return (
     <motion.article
@@ -46,9 +58,21 @@ export function FixtureCard({ fixture, onToggleFavourite, index, isFirstMount = 
       className={cn(
         "relative overflow-hidden transition-all duration-300",
         "hover:shadow-lg hover:border-primary/20",
-        fixture.is_favourite && "ring-1 ring-primary/30"
+        fixture.is_favourite && "ring-1 ring-primary/30",
+        isNew && "ring-2 ring-primary/50"
       )}
     >
+      {isNew && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20"
+        >
+          <Sparkles className="h-3 w-3" aria-hidden="true" />
+          NEW
+        </motion.div>
+      )}
+
       <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
       <Card className="relative h-full group">
@@ -88,18 +112,14 @@ export function FixtureCard({ fixture, onToggleFavourite, index, isFirstMount = 
                 <span className="flex items-center gap-1.5">
                   <Calendar className="h-3.5 w-3.5 opacity-60" aria-hidden="true" />
                   <time dateTime={fixture.event_date}>
-                    {new Date(fixture.event_date).toLocaleDateString("en-GB", {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short",
-                    })}
+                    {formatSydneyDate(fixture.event_date)}
                   </time>
                 </span>
 
                 {fixture.event_time && (
                   <span className="flex items-center gap-1.5">
                     <Clock className="h-3.5 w-3.5 opacity-60" aria-hidden="true" />
-                    {formatTime(fixture.event_time)}
+                    {formatSydneyTime(fixture.event_time)}
                   </span>
                 )}
 
@@ -121,10 +141,7 @@ export function FixtureCard({ fixture, onToggleFavourite, index, isFirstMount = 
             <div className="flex flex-col items-end gap-2 shrink-0">
               <button
                 className="relative p-1.5 rounded-full bg-muted hover:bg-accent transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleFavourite(fixture.id, fixture.is_favourite);
-                }}
+                onClick={handleToggle}
                 aria-label={fixture.is_favourite ? "Remove from favourites" : "Add to favourites"}
                 aria-pressed={fixture.is_favourite}
               >
