@@ -200,6 +200,18 @@ if __name__ == "__main__":
     print("Run scraper separately via: python scraper_worker.py")
     print("===============================================================\n")
 
+    with app.app_context():
+        from models import Fixture
+        from scraper_worker import run_scheduled_scrape
+        fixture_count = Fixture.query.count()
+        if fixture_count == 0:
+            print("[System] No fixtures found, fetching from XML...")
+            try:
+                count = run_scheduled_scrape()
+                print(f"[System] Scraped {count} fixtures from XML")
+            except Exception as e:
+                print(f"[System] Initial scrape failed: {e}")
+
     # Start the background scraper thread ONLY when running locally
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not os.environ.get('FLASK_DEBUG'):
         from scraper_worker import is_scheduled_time, run_scheduled_scrape
