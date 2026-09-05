@@ -30,11 +30,9 @@ def load_vite_manifest():
             return json.load(f)
     return {}
 
-vite_manifest = load_vite_manifest()
-
 @app.context_processor
 def inject_vite_assets():
-    return {"vite_manifest": vite_manifest}
+    return {"vite_manifest": load_vite_manifest()}
 
 # Cache configuration (Redis for production, SimpleCache for dev)
 cache_config = {
@@ -73,15 +71,16 @@ def serve_react(path):
         return jsonify({"error": "Not found"}), 404
     
     # Serve static files directly
+    # First check if path is a static file (e.g., /static/dist/...)
+    if path.startswith('static/'):
+        static_file_path = os.path.join(app.static_folder, path[7:])  # Remove 'static/' prefix
+        if os.path.exists(static_file_path) and os.path.isfile(static_file_path):
+            return send_from_directory(app.static_folder, path[7:])
+    
+    # Also check direct path (for files at root of static)
     static_file_path = os.path.join(app.static_folder, path)
     if path and os.path.exists(static_file_path) and os.path.isfile(static_file_path):
         return send_from_directory(app.static_folder, path)
-    
-    # Also check without leading 'static/' in case the path includes it
-    if path.startswith('static/'):
-        static_file_path = os.path.join(app.static_folder, path[7:])
-        if os.path.exists(static_file_path) and os.path.isfile(static_file_path):
-            return send_from_directory(app.static_folder, path[7:])
     
     # Serve React index.html for all other routes (SPA routing)
     return render_template('spa.html')
