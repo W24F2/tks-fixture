@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/api";
 import { Card } from "./ui/Card";
 import { Badge } from "./ui/Badge";
 import { Skeleton } from "./ui/Skeleton";
+import { Heart } from "lucide-react";
 
 interface FixtureListProps {
   groups: FixtureGroup[];
@@ -108,8 +109,17 @@ export function FixtureList({
           >
             <div className="h-px flex-1 bg-border" />
             <span className="flex items-center gap-2 whitespace-nowrap px-3 py-1.5 rounded-full bg-muted text-sm font-medium text-foreground">
-              <span className="text-primary">📅</span>
-              {formatDate(group.date)}
+              {group.date === "favourites" ? (
+                <>
+                  <Heart className="h-4 w-4 text-red-500 fill-red-500" aria-hidden="true" />
+                  <span>Favourites</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-primary">📅</span>
+                  {formatDate(group.date)}
+                </>
+              )}
               <Badge variant="secondary" className="ml-1">
                 {group.fixtures.length} {group.fixtures.length === 1 ? "fixture" : "fixtures"}
               </Badge>
@@ -117,7 +127,7 @@ export function FixtureList({
             <div className="h-px flex-1 bg-border" />
           </motion.div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="list" aria-label={`Fixtures for ${formatDate(group.date)}`}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="list" aria-label={group.date === "favourites" ? "Favourite fixtures" : `Fixtures for ${formatDate(group.date)}`}>
             {group.fixtures.map((fixture, fixtureIndex) => (
               <FixtureCard
                 key={fixture.id}

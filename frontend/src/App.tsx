@@ -6,7 +6,7 @@ import { Header } from "./components/Header";
 import { FixtureList } from "./components/FixtureList";
 import { LoadingScreen } from "./components/LoadingScreen";
 import type { Fixture, FixtureGroup } from "@/types/fixture";
-import { api, groupFixturesByDate, clearCache } from "./lib/api";
+import { api, groupFixturesByDate, clearCache, groupFixturesWithFavouritesFirst } from "./lib/api";
 import { getFavourites, toggleFavourite, isFavourite } from "./lib/favourites";
 import { getFixtureStatusInSydney, formatSydneyTime, formatSydneyDate, isPastDate } from "./lib/timezone";
 import { Card, CardContent } from "./components/ui/Card";
@@ -148,7 +148,7 @@ export default function App() {
     return result;
   }, [mergedFixtures, filter, searchQuery]);
 
-  const groups = useMemo(() => groupFixturesByDate(filteredFixtures), [filteredFixtures]);
+  const groups = useMemo(() => groupFixturesWithFavouritesFirst(filteredFixtures), [filteredFixtures]);
 
   const pastGroups = useMemo(() => {
     const pastFixtures = mergedFixtures.filter(f => isPastDate(f.event_date) && f.status === 'completed');

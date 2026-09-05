@@ -105,6 +105,33 @@ export function groupFixturesByDate(fixtures: Fixture[]): FixtureGroup[] {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+export function groupFixturesWithFavouritesFirst(fixtures: Fixture[]): FixtureGroup[] {
+  const favourites = fixtures.filter(f => f.is_favourite);
+  const nonFavourites = fixtures.filter(f => !f.is_favourite);
+  
+  const groups: FixtureGroup[] = [];
+  
+  if (favourites.length > 0) {
+    // Sort favourites by date/time
+    favourites.sort((a, b) => {
+      const dateA = new Date(a.event_date + "T" + (a.event_time || "00:00")).getTime();
+      const dateB = new Date(b.event_date + "T" + (b.event_time || "00:00")).getTime();
+      return dateA - dateB;
+    });
+    
+    groups.push({
+      date: "favourites",
+      fixtures: favourites,
+    });
+  }
+  
+  // Group non-favourites by date
+  const nonFavGroups = groupFixturesByDate(nonFavourites);
+  groups.push(...nonFavGroups);
+  
+  return groups;
+}
+
 export function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString("en-GB", {
