@@ -121,6 +121,16 @@ jobs:
             # Install frontend dependencies and build
             cd frontend && npm ci && npm run build && cd ..
             
+            # Ensure .env exists on server
+            if [ ! -f .env ]; then
+              cat > .env << 'EOF'
+TRUMBA_XML_URL=https://www.trumba.com/calendars/senior-fixtures.xml
+FLASK_ENV=production
+SECRET_KEY=${{ secrets.SECRET_KEY }}
+CRON_SECRET=${{ secrets.CRON_SECRET }}
+EOF
+            fi
+            
             # Install systemd services if not present
             sudo cp fixtures.service /etc/systemd/system/fixtures-app.service
             sudo cp fixtures-scraper.service /etc/systemd/system/fixtures-scraper.service
@@ -128,4 +138,7 @@ jobs:
             sudo systemctl daemon-reload
             sudo systemctl enable --now fixtures-app
             sudo systemctl enable --now fixtures-scraper.timer
+            # Check service status and logs for debugging
+            sudo systemctl status fixtures-app --no-pager || true
+            sudo journalctl -u fixtures-app --no-pager -n 50 || true
             sudo systemctl restart fixtures-app
