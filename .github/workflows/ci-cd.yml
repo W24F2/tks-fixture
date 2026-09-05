@@ -131,6 +131,12 @@ CRON_SECRET=${{ secrets.CRON_SECRET }}
 EOF
             fi
             
+            # Install nginx config
+            sudo cp nginx.conf /etc/nginx/sites-available/fixtures
+            sudo ln -sf /etc/nginx/sites-available/fixtures /etc/nginx/sites-enabled/fixtures
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo nginx -t && sudo systemctl reload nginx
+            
             # Install systemd services if not present
             sudo cp fixtures.service /etc/systemd/system/fixtures-app.service
             sudo cp fixtures-scraper.service /etc/systemd/system/fixtures-scraper.service
