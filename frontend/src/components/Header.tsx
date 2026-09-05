@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, RefreshCw, Zap, Heart, Calendar, X, List, Clock } from "lucide-react";
+import { Search, RefreshCw, Zap, Heart, Calendar, X, List, Clock, Filter } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -50,7 +50,7 @@ export function Header({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filterButtons = [
+  const filterOptions = [
     { value: "all" as const, label: "All", count: totalCount, icon: List },
     { value: "upcoming" as const, label: "Upcoming", count: upcomingCount, icon: Calendar },
     { value: "live" as const, label: "Live", count: liveCount, icon: Zap },
@@ -112,8 +112,25 @@ export function Header({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Mobile filter dropdown */}
+            <div className="md:hidden relative">
+              <select
+                value={activeFilter}
+                onChange={(e) => onFilterChange(e.target.value as typeof activeFilter)}
+                className="appearance-none bg-background border border-input rounded-lg px-3 py-2 pr-10 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer"
+              >
+                {filterOptions.map((filter) => (
+                  <option key={filter.value} value={filter.value}>
+                    {filter.label} {filter.count > 0 && `(${filter.count})`}
+                  </option>
+                ))}
+              </select>
+              <Filter className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
+            </div>
+
+            {/* Desktop filter buttons */}
             <div className="hidden md:flex items-center gap-1">
-              {filterButtons.map((filter) => {
+              {filterOptions.map((filter) => {
                 const Icon = filter.icon;
                 const isActive = activeFilter === filter.value;
                 return (

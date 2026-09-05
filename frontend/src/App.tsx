@@ -25,10 +25,23 @@ export default function App() {
   const [newEvents, setNewEvents] = useState<Set<number>>(new Set());
   const previousFixturesRef = useRef<Fixture[]>([]);
 
-  const favouriteIds = useMemo(() => new Set(getFavourites()), []);
+  const [favouriteIds, setFavouriteIds] = useState<Set<number>>(() => new Set(getFavourites()));
   
   const refreshFavourites = useCallback(() => {
+    setFavouriteIds(new Set(getFavourites()));
     setFixtures(prev => [...prev]);
+  }, []);
+  
+  useEffect(() => {
+    const handleStorage = () => {
+      setFavouriteIds(new Set(getFavourites()));
+    };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('sf-favourites-changed', handleStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('sf-favourites-changed', handleStorage);
+    };
   }, []);
 
   const mergedFixtures = useMemo(() => {

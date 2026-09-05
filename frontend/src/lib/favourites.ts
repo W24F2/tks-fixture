@@ -16,6 +16,7 @@ export function addFavourite(fixtureId: number): void {
   if (!favourites.includes(fixtureId)) {
     favourites.push(fixtureId);
     localStorage.setItem(FAVOURITES_KEY, JSON.stringify(favourites));
+    window.dispatchEvent(new Event('sf-favourites-changed'));
   }
 }
 
@@ -23,6 +24,7 @@ export function removeFavourite(fixtureId: number): void {
   if (typeof window === 'undefined') return;
   const favourites = getFavourites().filter((id) => id !== fixtureId);
   localStorage.setItem(FAVOURITES_KEY, JSON.stringify(favourites));
+  window.dispatchEvent(new Event('sf-favourites-changed'));
 }
 
 export function toggleFavourite(fixtureId: number): boolean {
