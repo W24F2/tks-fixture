@@ -95,11 +95,19 @@ jobs:
           key: ${{ secrets.OCI_SSH_KEY }}
           script: |
             cd /opt/fixtures/app
+            git config user.email "deploy@github-actions"
+            git config user.name "GitHub Actions"
             if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
               git pull origin dev
             else
               git pull origin main
             fi
             make install-frontend build-frontend
-            sudo systemctl reload fixtures-app
-            sudo systemctl restart fixtures-scraper.timer
+            # Install systemd services if not present
+            sudo cp fixtures.service /etc/systemd/system/fixtures-app.service
+            sudo cp fixtures-scraper.service /etc/systemd/system/fixtures-scraper.service
+            sudo cp fixtures-scraper.timer /etc/systemd/system/fixtures-scraper.timer
+            sudo systemctl daemon-reload
+            sudo systemctl enable --now fixtures-app
+            sudo systemctl enable --now fixtures-scraper.timer
+            sudo systemctl restart fixtures-app
