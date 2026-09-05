@@ -1,21 +1,22 @@
-import os
+from datetime import datetime, timedelta, timezone
+
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, timezone, timedelta
-try:
-    import zoneinfo
-except ImportError:
-    from backports import zoneinfo
 
 db = SQLAlchemy()
 
-class Fixture(db.Model):
+try:
+    import zoneinfo
+except (KeyError, OSError):
+    from backports import zoneinfo  # type: ignore[attr-defined,no-redef,import-untyped]
+
+class Fixture(db.Model):  # type: ignore[name-defined]
     __tablename__ = 'fixtures'
 
     id = db.Column(db.Integer, primary_key=True)
     external_id = db.Column(db.String(100), unique=True, nullable=False)
     title = db.Column(db.String(255), nullable=False)
     location = db.Column(db.String(255))
-    event_date = db.Column(db.DateTime, nullable=False)
+    event_date = db.Column(db.DateTime, nullable=False, index=True)
     event_time = db.Column(db.Time)
     event_end_time = db.Column(db.Time)
     sport = db.Column(db.String(100))
@@ -24,13 +25,15 @@ class Fixture(db.Model):
     raw_content = db.Column(db.Text)  # Store original HTML for fallback/debugging
     last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    __table_args__ = ()
+
     def to_dict(self):
         # Determine status based on current time in Sydney
         status = "Scheduled"
         if self.event_date:
             try:
                 sydney_tz = zoneinfo.ZoneInfo("Australia/Sydney")
-            except Exception:
+            except (KeyError, OSError):
                 # Fallback if zoneinfo fails
                 sydney_tz = timezone.utc
 
@@ -56,9 +59,17 @@ class Fixture(db.Model):
                     status = "Live"
                 else:
                     status = "Finished"
-            except Exception as e:
+            except (ValueError, AttributeError) as e:
                 print(f"[Error] Status calculation failed: {e}")
                 status = "Scheduled"
+
+        # Map backend status to frontend expected values
+        status_map = {
+            "Scheduled": "upcoming",
+            "Live": "live",
+            "Finished": "completed",
+        }
+        frontend_status = status_map.get(status, "upcoming")
 
         return {
             "id": self.id,
@@ -72,16 +83,18 @@ class Fixture(db.Model):
             "opposition": self.opposition,
             "team": self.team,
             "last_updated": self.last_updated.isoformat() if self.last_updated else None,
-            "status": status
+            "status": frontend_status
         }
 
-class Favourite(db.Model):
+class Favourite(db.Model):  # type: ignore[name-defined]
     __tablename__ = 'favourites'
 
     id = db.Column(db.Integer, primary_key=True)
     device_id = db.Column(db.String(36), nullable=False)
-    fixture_id = db.Column(db.Integer, nullable=False)
+    fixture_id = db.Column(db.Integer, db.ForeignKey('fixtures.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    fixture = db.relationship("Fixture", foreign_keys=[fixture_id])
 
     __table_args__ = (
         db.UniqueConstraint('device_id', 'fixture_id', name='uix_device_fixture'),
@@ -92,5 +105,6 @@ class Favourite(db.Model):
             "id": self.id,
             "device_id": self.device_id,
             "fixture_id": self.fixture_id,
+            "fixture": self.fixture.to_dict() if self.fixture else None,
             "created_at": self.created_at.isoformat()
         }

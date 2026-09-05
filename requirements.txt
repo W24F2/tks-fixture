@@ -9,3 +9,4 @@ flask-limiter
 flask-caching
 redis
 mysql-connector-python
+flask-compress

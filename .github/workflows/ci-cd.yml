@@ -1,0 +1,231 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+  pull_request:
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff pytest pytest-cov
+
+      - name: Lint with ruff
+        run: ruff check .
+
+      - name: Run Python tests
+        run: |
+          PYTHONPATH=. pytest tests/ -v --cov=. --cov-report=xml
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Lint frontend
+        run: cd frontend && npm run lint
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Type check frontend
+        run: cd frontend && npm run typecheck
+
+  build-and-deploy-dev:
+    needs: lint-and-test
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Deploy to OCI server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script: |
+            cd /opt/fixtures/app
+            git config user.email "deploy@github-actions"
+            git config user.name "GitHub Actions"
+            BRANCH="${{ github.ref_name }}"
+            git pull origin "$BRANCH"
+            
+            # Install Node.js/npm if not present
+            if ! command -v npm &> /dev/null; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
+            
+            # Create Python venv if not exists
+            if [ ! -d "venv" ]; then
+              python3 -m venv venv
+            fi
+            
+            # Install Python dependencies
+            venv/bin/pip install --upgrade pip
+            venv/bin/pip install -r requirements.txt
+            
+            # Install frontend dependencies and build
+            cd frontend && npm ci && npm run build && cd ..
+            
+            # Ensure .env exists on server
+            if [ ! -f .env ]; then
+              cat > .env << 'EOF'
+TRUMBA_XML_URL=https://www.trumba.com/calendars/senior-fixtures.xml
+FLASK_ENV=production
+SECRET_KEY=${{ secrets.SECRET_KEY }}
+CRON_SECRET=${{ secrets.CRON_SECRET }}
+EOF
+            fi
+            
+            # Install nginx config
+            sudo cp nginx.conf /etc/nginx/sites-available/fixtures
+            sudo ln -sf /etc/nginx/sites-available/fixtures /etc/nginx/sites-enabled/fixtures
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo nginx -t && sudo systemctl reload nginx
+            
+            # Install systemd services if not present
+            sudo cp fixtures.service /etc/systemd/system/fixtures-app.service
+            sudo cp fixtures-scraper.service /etc/systemd/system/fixtures-scraper.service
+            sudo cp fixtures-scraper.timer /etc/systemd/system/fixtures-scraper.timer
+            sudo systemctl daemon-reload
+            sudo systemctl enable --now fixtures-app
+            sudo systemctl enable --now fixtures-scraper.timer
+            # Check service status and logs for debugging
+            sudo systemctl status fixtures-app --no-pager || true
+            sudo journalctl -u fixtures-app --no-pager -n 50 || true
+            sudo systemctl restart fixtures-app
+
+  build-and-deploy-prod:
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script: |
+            cd /opt/fixtures/app
+            git config user.email "deploy@github-actions"
+            git config user.name "GitHub Actions"
+            git pull origin main
+            
+            # Install Node.js/npm if not present
+            if ! command -v npm &> /dev/null; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
+            
+            # Create Python venv if not exists
+            if [ ! -d "venv" ]; then
+              python3 -m venv venv
+            fi
+            
+            # Install Python dependencies
+            venv/bin/pip install --upgrade pip
+            venv/bin/pip install -r requirements.txt
+            
+            # Install frontend dependencies and build
+            cd frontend && npm ci && npm run build && cd ..
+            
+            # Ensure .env exists on server
+            if [ ! -f .env ]; then
+              cat > .env << 'EOF'
+TRUMBA_XML_URL=https://www.trumba.com/calendars/senior-fixtures.xml
+FLASK_ENV=production
+SECRET_KEY=${{ secrets.SECRET_KEY }}
+CRON_SECRET=${{ secrets.CRON_SECRET }}
+EOF
+            fi
+            
+            # Install nginx config
+            sudo cp nginx.conf /etc/nginx/sites-available/fixtures
+            sudo ln -sf /etc/nginx/sites-available/fixtures /etc/nginx/sites-enabled/fixtures
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo nginx -t && sudo systemctl reload nginx
+            
+            # Install systemd services if not present
+            sudo cp fixtures.service /etc/systemd/system/fixtures-app.service
+            sudo cp fixtures-scraper.service /etc/systemd/system/fixtures-scraper.service
+            sudo cp fixtures-scraper.timer /etc/systemd/system/fixtures-scraper.timer
+            sudo systemctl daemon-reload
+            sudo systemctl enable --now fixtures-app
+            sudo systemctl enable --now fixtures-scraper.timer
+            sudo systemctl restart fixtures-app

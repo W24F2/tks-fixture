@@ -1,7 +1,10 @@
 import os
+
 from flask import Flask
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError, ProgrammingError, SQLAlchemyError
+
 from models import db
-from sqlalchemy import text, inspect
 
 
 def create_app():
@@ -9,10 +12,17 @@ def create_app():
 
     db_url = None
 
+    # Oracle Database
+    if os.getenv("ORACLE_USER") and os.getenv("ORACLE_PASSWORD") and os.getenv("ORACLE_DSN"):
+        user = os.getenv("ORACLE_USER")
+        password = os.getenv("ORACLE_PASSWORD")
+        dsn = os.getenv("ORACLE_DSN")
+        db_url = f"oracle+oracledb://{user}:{password}@{dsn}"
+
     # MySQL HeatWave
-    if os.getenv("DB_HOST") and os.getenv("DB_USER"):
+    elif os.getenv("DB_HOST") and os.getenv("DB_USER"):
         host = os.getenv("DB_HOST")
-        port = int(os.getenv("DB_PORT", 3306))
+        port = int(os.getenv("DB_PORT", "3306"))
         user = os.getenv("DB_USER")
         password = os.getenv("DB_PASSWORD")
         database = os.getenv("DB_NAME")
@@ -71,7 +81,7 @@ def create_app():
                     )
                     db.session.commit()
 
-        except Exception as e:
+        except (OperationalError, ProgrammingError, SQLAlchemyError) as e:
             print(f"[System] Auto-migration failed: {e}")
 
     return app

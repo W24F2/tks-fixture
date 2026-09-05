@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports Fixtures</title>
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#020617">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='FS.png') }}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Sports Fixtures">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='FS.svg') }}">
+    <link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static', filename='FS.png') }}">
+    
+    <!-- Preload critical resources -->
+    {% if vite_manifest and vite_manifest['index.html'] %}
+        <link rel="preload" href="{{ url_for('static', filename='dist/' ~ vite_manifest['index.html'].file) }}" as="script">
+        <link rel="modulepreload" href="{{ url_for('static', filename='dist/' ~ vite_manifest['index.html'].file) }}">
+        {% if vite_manifest['index.html'].css %}
+            {% for css_file in vite_manifest['index.html'].css %}
+                <link rel="preload" href="{{ url_for('static', filename='dist/' ~ css_file) }}" as="style">
+                <link rel="stylesheet" href="{{ url_for('static', filename='dist/' ~ css_file) }}">
+            {% endfor %}
+        {% endif %}
+    {% endif %}
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap"></noscript>
+</head>
+<body>
+    <div id="root"></div>
+    
+    {% if vite_manifest and vite_manifest['index.html'] %}
+        <script type="module" src="{{ url_for('static', filename='dist/' ~ vite_manifest['index.html'].file) }}"></script>
+    {% endif %}
+</body>
+</html>

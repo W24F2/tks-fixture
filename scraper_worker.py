@@ -1,24 +1,28 @@
-#!/usr/bin/env python3
 """
 Scheduled Scraper Worker for Sports Fetcher.
 Runs every 15 minutes from 04:45 AM to 04:15 PM Sydney time, Tuesday through Saturday.
 Automatically catches up on first launch / stale data / empty database.
 """
+import logging
 import os
 import sys
-import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
+import requests
+
 try:
     import zoneinfo
-except ImportError:
-    from backports import zoneinfo
+except (KeyError, OSError):
+    from backports import zoneinfo  # type: ignore[attr-defined,no-redef,import-untyped]
 
 # Add the project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
+
 from app import create_app
-from scraper import TrumbaScraper
 from models import Fixture  # Import model to check DB state
+from scraper import TrumbaScraper
 
 # Configure logging
 logging.basicConfig(
@@ -35,7 +39,7 @@ def is_scheduled_time():
     """
     try:
         sydney_tz = zoneinfo.ZoneInfo("Australia/Sydney")
-    except Exception:
+    except (KeyError, OSError):
         sydney_tz = timezone.utc
 
     now = datetime.now(sydney_tz)
@@ -47,10 +51,7 @@ def is_scheduled_time():
     minutes_since_midnight = now.hour * 60 + now.minute
     
     # 04:45 AM = 285 min, 04:15 PM = 975 min
-    if minutes_since_midnight < 285 or minutes_since_midnight > 975:
-        return False
-
-    return True
+    return 285 <= minutes_since_midnight <= 975
 
 
 def needs_catch_up_scrape(app):
@@ -68,10 +69,10 @@ def needs_catch_up_scrape(app):
                 return True
 
             # Check freshness of latest record
-            latest = Fixture.query.order_by(Fixture.updated_at.desc()).first()
-            if latest and latest.updated_at:
+            latest = Fixture.query.order_by(Fixture.last_updated.desc()).first()
+            if latest and latest.last_updated:
                 # Ensure timezone awareness for comparison
-                latest_update = latest.updated_at
+                latest_update = latest.last_updated
                 if latest_update.tzinfo is None:
                     latest_update = latest_update.replace(tzinfo=timezone.utc)
                 
@@ -81,7 +82,7 @@ def needs_catch_up_scrape(app):
                     return True
             
             return False
-        except Exception as e:
+        except (OperationalError, SQLAlchemyError) as e:
             # If DB not ready or schema missing, assume we need to scrape
             logger.warning(f"DB check failed ({e}) — assuming catch-up needed.")
             return True
@@ -114,7 +115,7 @@ def run_scheduled_scrape():
             logger.info(f"Scrape completed. New: {new_count}, Updated: {updated_count}")
             return True
             
-        except Exception as e:
+        except (requests.RequestException, ValueError, RuntimeError, SQLAlchemyError) as e:
             logger.error(f"Scrape failed: {e}")
             return False
 

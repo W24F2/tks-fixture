@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Sports Fixtures{% endblock %}</title>
     
+    <!-- Preload critical resources -->
+    {% if vite_manifest and vite_manifest['style.css'] %}
+        <link rel="preload" href="{{ url_for('static', filename='dist/' ~ vite_manifest['style.css'].file) }}" as="style">
+        <link rel="preload" href="{{ url_for('static', filename='dist/' ~ vite_manifest['app.js'].file) }}" as="script">
+    {% else %}
+        <link rel="preload" href="{{ url_for('static', filename='style.css') }}" as="style">
+        <link rel="preload" href="{{ url_for('static', filename='app.js') }}" as="script">
+    {% endif %}
+    <link rel="preload" href="{{ url_for('static', filename='FS.svg') }}" as="image" type="image/svg+xml">
+    
     <!-- PWA Meta Tags -->
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <meta name="theme-color" content="#020617">
@@ -16,9 +26,17 @@
     <link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static', filename='FS.png') }}">
     
     <!-- Styles -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% if vite_manifest and vite_manifest['style.css'] %}
+        <link rel="stylesheet" href="{{ url_for('static', filename='dist/' ~ vite_manifest['style.css'].file) }}">
+    {% else %}
+        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% endif %}
     <!-- Using Inter font for a modern look -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap"></noscript>
     <!-- Lucide Icons for a premium feel -->
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -56,10 +74,14 @@
         </div>
     </footer>
 
-    <script defer src="{{ url_for('static', filename='app.js') }}"></script>
     <script defer>
         // Initialize Lucide icons after DOM is ready
         document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
     </script>
+    {% if vite_manifest and vite_manifest['app.js'] %}
+        <script defer src="{{ url_for('static', filename='dist/' ~ vite_manifest['app.js'].file) }}"></script>
+    {% else %}
+        <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+    {% endif %}
 </body>
 </html>
