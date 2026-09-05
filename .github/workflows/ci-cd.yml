@@ -102,7 +102,25 @@ jobs:
             else
               git pull origin main
             fi
-            make install-frontend build-frontend
+            
+            # Install Node.js/npm if not present
+            if ! command -v npm &> /dev/null; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
+            
+            # Create Python venv if not exists
+            if [ ! -d "venv" ]; then
+              python3 -m venv venv
+            fi
+            
+            # Install Python dependencies
+            venv/bin/pip install --upgrade pip
+            venv/bin/pip install -r requirements.txt
+            
+            # Install frontend dependencies and build
+            cd frontend && npm ci && npm run build && cd ..
+            
             # Install systemd services if not present
             sudo cp fixtures.service /etc/systemd/system/fixtures-app.service
             sudo cp fixtures-scraper.service /etc/systemd/system/fixtures-scraper.service
