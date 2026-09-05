@@ -86,29 +86,20 @@ jobs:
       - name: Build frontend
         run: cd frontend && npm run build
 
-      - name: Deploy to dev server
-        if: github.ref == 'refs/heads/dev'
+      - name: Deploy to OCI server
+        if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.DEV_SERVER_HOST }}
-          username: ${{ secrets.DEV_SERVER_USER }}
-          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
           script: |
             cd /opt/fixtures/app
-            git pull origin dev
-            make install-frontend build-frontend
-            sudo systemctl reload fixtures-app
-
-      - name: Deploy to production server
-        if: github.ref == 'refs/heads/main'
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.PROD_SERVER_HOST }}
-          username: ${{ secrets.PROD_SERVER_USER }}
-          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          script: |
-            cd /opt/fixtures/app
-            git pull origin main
+            if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+              git pull origin dev
+            else
+              git pull origin main
+            fi
             make install-frontend build-frontend
             sudo systemctl reload fixtures-app
             sudo systemctl restart fixtures-scraper.timer
