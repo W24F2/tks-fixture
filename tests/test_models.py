@@ -40,7 +40,7 @@ class TestFixture:
         assert result["external_id"] == "test-123"
         assert result["title"] == "Test Match"
         assert result["sport"] == "Rugby"
-        assert result["status"] in ["Scheduled", "Live", "Finished"]
+        assert result["status"] in ["upcoming", "live", "completed"]
 
 
 class TestFavourite:

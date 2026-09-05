@@ -1,4 +1,5 @@
 import type { Fixture, FixtureGroup, FavouriteResponse, ApiResponse } from "@/types/fixture";
+import { getDeviceId } from "./device";
 
 const API_BASE = "/api";
 
@@ -24,24 +25,38 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<ApiResp
   }
 }
 
+function getAuthHeaders(): HeadersInit {
+  const deviceId = getDeviceId();
+  return {
+    "Content-Type": "application/json",
+    "X-Device-ID": deviceId,
+  };
+}
+
 export const api = {
   async getFixtures(): Promise<ApiResponse<Fixture[]>> {
     return fetchJson<Fixture[]>(`${API_BASE}/fixtures`);
   },
 
   async getFavourites(): Promise<ApiResponse<FavouriteResponse[]>> {
-    return fetchJson<FavouriteResponse[]>(`${API_BASE}/favourites`);
+    const deviceId = getDeviceId();
+    return fetchJson<FavouriteResponse[]>(`${API_BASE}/favourites/${deviceId}`);
   },
 
-  async toggleFavourite(fixtureId: number): Promise<ApiResponse<FavouriteResponse>> {
-    return fetchJson<FavouriteResponse>(`${API_BASE}/favourites/${fixtureId}`, {
+  async addFavourite(fixtureId: number): Promise<ApiResponse<FavouriteResponse>> {
+    const deviceId = getDeviceId();
+    return fetchJson<FavouriteResponse>(`${API_BASE}/favourites`, {
       method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ device_id: deviceId, fixture_id: fixtureId }),
     });
   },
 
-  async removeFavourite(favouriteId: number): Promise<ApiResponse<void>> {
-    return fetchJson<void>(`${API_BASE}/favourites/${favouriteId}`, {
+  async removeFavourite(fixtureId: number): Promise<ApiResponse<void>> {
+    const deviceId = getDeviceId();
+    return fetchJson<void>(`${API_BASE}/favourites/${deviceId}/${fixtureId}`, {
       method: "DELETE",
+      headers: getAuthHeaders(),
     });
   },
 

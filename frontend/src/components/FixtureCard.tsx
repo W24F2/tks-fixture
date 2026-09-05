@@ -1,7 +1,7 @@
 "use client";
 
-import { motion, AnimatePresence, type Variants } from "framer-motion";
-import { Heart, MapPin, Clock, Shield, Calendar, Star } from "lucide-react";
+import { motion, type Variants } from "framer-motion";
+import { MapPin, Clock, Shield, Calendar, Star } from "lucide-react";
 import { Fixture } from "@/types/fixture";
 import { formatTime, getStatusBadge } from "@/lib/api";
 import { Card, CardContent } from "./ui/Card";
@@ -11,6 +11,7 @@ interface FixtureCardProps {
   fixture: Fixture;
   onToggleFavourite: (fixtureId: number, isFavourite: boolean) => void;
   index: number;
+  isFirstMount?: boolean;
 }
 
 const statusIcons = {
@@ -20,45 +21,42 @@ const statusIcons = {
   cancelled: Star,
 };
 
-export function FixtureCard({ fixture, onToggleFavourite, index }: FixtureCardProps) {
+const cardVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.4,
+      ease: [0.25, 0.46, 0.45, 0.94] as const,
+    },
+  },
+};
+
+export function FixtureCard({ fixture, onToggleFavourite, index, isFirstMount = true }: FixtureCardProps) {
   const StatusIcon = statusIcons[fixture.status] || Calendar;
   const { label, className: badgeClass } = getStatusBadge(fixture.status);
 
-  const cardVariants: Variants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: 0.4,
-        ease: [0.25, 0.46, 0.45, 0.94] as const,
-      },
-    },
-  };
-
   return (
     <motion.article
-      custom={index}
       variants={cardVariants}
-      initial="hidden"
+      initial={isFirstMount ? "hidden" : false}
       animate="visible"
+      style={{ transitionDelay: `${(index % 10) * 50}ms` }}
       className={cn(
         "relative overflow-hidden transition-all duration-300",
         "hover:shadow-lg hover:border-primary/20",
         fixture.is_favourite && "ring-1 ring-primary/30"
       )}
     >
-      <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
       <Card className="relative h-full group">
         <CardContent className="p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-2">
-                <motion.span
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.1 * (index % 5) + 0.1, type: "spring", stiffness: 300 }}
+                <span
                   className={cn(
                     "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border",
                     badgeClass
@@ -66,23 +64,14 @@ export function FixtureCard({ fixture, onToggleFavourite, index }: FixtureCardPr
                 >
                   <StatusIcon className="h-3 w-3" aria-hidden="true" />
                   {label}
-                </motion.span>
+                </span>
 
-                <AnimatePresence mode="wait">
-                  {fixture.is_favourite && (
-                    <motion.span
-                      key="favourite-badge"
-                      initial={{ opacity: 0, scale: 0.5, x: -10 }}
-                      animate={{ opacity: 1, scale: 1, x: 0 }}
-                      exit={{ opacity: 0, scale: 0.5, x: 10 }}
-                      transition={{ type: "spring", stiffness: 300 }}
-                      className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
-                    >
-                      <Star className="h-3 w-3 fill-yellow-500" aria-hidden="true" />
-                      Favourite
-                    </motion.span>
-                  )}
-                </AnimatePresence>
+                {fixture.is_favourite && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+                    <Star className="h-3 w-3 fill-yellow-500" aria-hidden="true" />
+                    Favourite
+                  </span>
+                )}
               </div>
 
               <h3 className="text-lg font-semibold text-foreground truncate pr-8">
@@ -130,51 +119,26 @@ export function FixtureCard({ fixture, onToggleFavourite, index }: FixtureCardPr
             </div>
 
             <div className="flex flex-col items-end gap-2 shrink-0">
-              <motion.button
-                className="relative p-1.5 rounded-full bg-muted hover:bg-accent transition-colors group/fav"
-                onClick={() => onToggleFavourite(fixture.id, !fixture.is_favourite)}
+              <button
+                className="relative p-1.5 rounded-full bg-muted hover:bg-accent transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleFavourite(fixture.id, fixture.is_favourite);
+                }}
                 aria-label={fixture.is_favourite ? "Remove from favourites" : "Add to favourites"}
                 aria-pressed={fixture.is_favourite}
-                whileTap={{ scale: 0.85 }}
               >
-                <AnimatePresence mode="wait">
-                  {!fixture.is_favourite ? (
-                    <motion.span
-                      key="empty-heart"
-                      initial={{ scale: 0, rotate: -20 }}
-                      animate={{ scale: 1, rotate: 0 }}
-                      exit={{ scale: 0, rotate: 20 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                    >
-                      <Heart className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-                    </motion.span>
-                  ) : (
-                    <motion.span
-                      key="filled-heart"
-                      initial={{ scale: 0, rotate: 20 }}
-                      animate={{ scale: 1, rotate: 0 }}
-                      exit={{ scale: 0, rotate: -20 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                    >
-                      <Heart className="h-5 w-5 fill-red-500 text-red-500" aria-hidden="true" />
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-
-                <AnimatePresence>
-                  {fixture.is_favourite && (
-                    <motion.div
-                      key="heart-burst"
-                      initial={{ scale: 0, opacity: 1 }}
-                      animate={{ scale: 2, opacity: 0 }}
-                      transition={{ duration: 0.4, ease: "easeOut" }}
-                      className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                    >
-                      <Heart className="h-6 w-6 fill-red-500/30 text-red-500/30" aria-hidden="true" />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.button>
+                {fixture.is_favourite ? (
+                  <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" aria-hidden="true" />
+                ) : (
+                  <Star className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                )}
+                {fixture.is_favourite && (
+                  <span className="absolute inset-0 flex items-center justify-center pointer-events-none animate-ping">
+                    <Star className="h-6 w-6 fill-yellow-400/30 text-yellow-400/30" aria-hidden="true" />
+                  </span>
+                )}
+              </button>
 
               {fixture.team && (
                 <span className="text-xs font-medium px-2 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 whitespace-nowrap">

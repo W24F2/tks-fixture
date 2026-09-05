@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, Filter, Search, RefreshCw } from "lucide-react";
+import { Search, RefreshCw, Zap, Heart, Calendar, X, List } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -13,14 +13,13 @@ interface HeaderProps {
   favouriteCount: number;
   onFilterChange: (filter: "all" | "favourites" | "upcoming" | "live") => void;
   activeFilter: "all" | "favourites" | "upcoming" | "live";
+  upcomingCount: number;
+  liveCount: number;
+  totalCount: number;
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  onClearSearch: () => void;
 }
-
-const filterOptions = [
-  { value: "all", label: "All", icon: null },
-  { value: "favourites", label: "Favourites", icon: Star },
-  { value: "upcoming", label: "Upcoming", icon: null },
-  { value: "live", label: "Live", icon: null },
-] as const;
 
 export function Header({
   onRefresh,
@@ -28,26 +27,33 @@ export function Header({
   favouriteCount,
   onFilterChange,
   activeFilter,
+  upcomingCount,
+  liveCount,
+  totalCount,
+  searchQuery,
+  onSearchChange,
+  onClearSearch,
 }: HeaderProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const menuRef = useRef<HTMLButtonElement>(null);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsMenuOpen(false);
-      }
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setIsSearchOpen(false);
+        setIsSearchFocused(false);
       }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const filterButtons = [
+    { value: "all" as const, label: "All", count: totalCount, icon: List },
+    { value: "upcoming" as const, label: "Upcoming", count: upcomingCount, icon: Calendar },
+    { value: "live" as const, label: "Live", count: liveCount, icon: Zap },
+    { value: "favourites" as const, label: "Favourites", count: favouriteCount, icon: Heart },
+  ];
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -73,101 +79,73 @@ export function Header({
             </div>
           </div>
 
-          <div className="flex-1 flex items-center justify-center gap-2 max-w-md">
-            <motion.div
-              ref={searchRef}
-              initial={{ opacity: 0, width: 0, padding: 0 }}
-              animate={{ opacity: isSearchOpen ? 1 : 0, width: isSearchOpen ? 280 : 0, padding: isSearchOpen ? "0 8px" : 0 }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="relative overflow-hidden"
-            >
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 shrink-0"
-                onClick={() => setIsSearchOpen(!isSearchOpen)}
-                aria-label={isSearchOpen ? "Close search" : "Open search"}
-              >
-                <Search className="h-4 w-4" aria-hidden="true" />
-              </Button>
-              {isSearchOpen && (
-                <div className="absolute left-10 top-1/2 -translate-y-1/2 w-[260px]">
-                  <Input
-                    type="search"
-                    placeholder="Search fixtures..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-8 text-sm bg-transparent"
-                    aria-label="Search fixtures"
-                    autoFocus
-                  />
-                </div>
-              )}
-            </motion.div>
+          <div className="flex-1 flex items-center justify-center gap-2 max-w-2xl" ref={searchRef}>
+            <div className="relative w-full max-w-md">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  type="search"
+                  placeholder="Search team, location, sport..."
+                  value={searchQuery}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => setTimeout(() => setIsSearchFocused(false), 100)}
+                  className="h-10 pl-10 pr-10 text-sm bg-background"
+                  aria-label="Search fixtures"
+                />
+                {searchQuery && (
+                  <motion.button
+                    onClick={onClearSearch}
+                    initial={{ opacity: 0, scale: 0 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </motion.button>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <motion.button
-              ref={menuRef}
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="relative h-9 w-9 sm:h-10 sm:w-36 rounded-lg bg-muted flex items-center justify-center gap-2 text-sm font-medium transition-colors hover:bg-accent"
-              aria-expanded={isMenuOpen}
-              aria-haspopup="listbox"
-              aria-label="Filter fixtures"
-            >
-              <Filter className="h-4 w-4" aria-hidden="true" />
-              <span className="hidden sm:inline">{activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1)}</span>
-              <motion.span
-                animate={{ rotate: isMenuOpen ? 180 : 0 }}
-                transition={{ duration: 0.2 }}
-                className="h-3 w-3"
-              >
-                ▼
-              </motion.span>
-            </motion.button>
-
-            <AnimatePresence>
-              {isMenuOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  className="absolute right-0 mt-2 w-48 rounded-md border bg-popover p-1 shadow-lg"
-                  role="listbox"
-                >
-                  {filterOptions.map((filter) => (
-                    <motion.button
-                      key={filter.value}
-                      onClick={() => {
-                        onFilterChange(filter.value as typeof activeFilter);
-                        setIsMenuOpen(false);
-                      }}
-                      className={cn(
-                        "w-full flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors",
-                        activeFilter === filter.value
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                      )}
-                      role="option"
-                      aria-selected={activeFilter === filter.value}
-                    >
-                      {filter.icon && <filter.icon className="h-4 w-4" aria-hidden="true" />}
-                      {filter.label}
-                      {filter.value === "favourites" && favouriteCount > 0 && (
-                        <motion.span
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          className="ml-auto h-5 w-5 flex items-center justify-center rounded-full bg-primary/20 text-primary text-xs font-medium"
-                        >
-                          {favouriteCount}
-                        </motion.span>
-                      )}
-                    </motion.button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <div className="hidden md:flex items-center gap-1">
+              {filterButtons.map((filter) => {
+                const Icon = filter.icon;
+                const isActive = activeFilter === filter.value;
+                return (
+                  <motion.button
+                    key={filter.value}
+                    onClick={() => onFilterChange(filter.value)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200",
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                    )}
+                    whileTap={{ scale: 0.95 }}
+                    aria-pressed={isActive}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    <span>{filter.label}</span>
+                    {filter.count > 0 && (
+                      <motion.span
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="h-5 w-5 flex items-center justify-center rounded-full text-xs font-medium"
+                        style={{
+                          backgroundColor: isActive
+                            ? "rgba(255,255,255,0.2)"
+                            : "rgba(0,0,0,0.08)",
+                        }}
+                      >
+                        {filter.count}
+                      </motion.span>
+                    )}
+                  </motion.button>
+                );
+              })}
+            </div>
 
             <Button
               variant="ghost"

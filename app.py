@@ -4,7 +4,7 @@ import threading
 
 import requests
 from dotenv import load_dotenv
-from flask import jsonify, render_template, send_from_directory
+from flask import jsonify, render_template, request, send_from_directory
 from flask_caching import Cache
 from flask_compress import Compress
 from flask_limiter import Limiter
@@ -77,6 +77,12 @@ def serve_react(path):
     if path and os.path.exists(static_file_path) and os.path.isfile(static_file_path):
         return send_from_directory(app.static_folder, path)
     
+    # Also check without leading 'static/' in case the path includes it
+    if path.startswith('static/'):
+        static_file_path = os.path.join(app.static_folder, path[7:])
+        if os.path.exists(static_file_path) and os.path.isfile(static_file_path):
+            return send_from_directory(app.static_folder, path[7:])
+    
     # Serve React index.html for all other routes (SPA routing)
     return render_template('spa.html')
 
@@ -91,31 +97,41 @@ def get_fixtures():
     return jsonify([f.to_dict() for f in fixtures])
 
 
-@app.route('/api/favourites', methods=['GET'])
-def get_favourites():
-    """Fetch all favourites."""
-    favourites = Favourite.query.all()
+@app.route('/api/favourites/<device_id>', methods=['GET'])
+def get_favourites(device_id):
+    """Fetch all favourites for a device."""
+    favourites = Favourite.query.filter_by(device_id=device_id).all()
     return jsonify([f.to_dict() for f in favourites])
 
 
-@app.route('/api/favourites/<int:fixture_id>', methods=['POST'])
-def toggle_favourite(fixture_id):
-    """Add or remove a fixture from favourites."""
+@app.route('/api/favourites', methods=['POST'])
+def add_favourite():
+    """Add a fixture to favourites for a device."""
     try:
-        favourite = Favourite.query.filter_by(fixture_id=fixture_id).first()
-        
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid request"}), 400
+
+        device_id = data.get('device_id')
+        fixture_id = data.get('fixture_id')
+
+        if not device_id or not fixture_id:
+            return jsonify({"error": "device_id and fixture_id are required"}), 400
+
+        # Check if already favourited
+        favourite = Favourite.query.filter_by(device_id=device_id, fixture_id=fixture_id).first()
+
         if favourite:
-            # Remove from favourites
-            db.session.delete(favourite)
-            db.session.commit()
-            return jsonify({"status": "removed", "fixture_id": fixture_id}), 200
-        else:
-            # Add to favourites
-            new_favourite = Favourite(fixture_id=fixture_id)
-            db.session.add(new_favourite)
-            db.session.commit()
-            return jsonify({"status": "added", "fixture_id": fixture_id, "id": new_favourite.id}), 201
-            
+            # Already favourited, return existing
+            return jsonify(favourite.to_dict()), 200
+
+        # Add to favourites
+        new_favourite = Favourite(device_id=device_id, fixture_id=fixture_id)
+        db.session.add(new_favourite)
+        db.session.commit()
+        # Return full favourite object with fixture data
+        return jsonify(new_favourite.to_dict()), 201
+
     except (SQLAlchemyError, ValueError, KeyError) as e:
         db.session.rollback()
         err_msg = str(e).lower()
@@ -124,17 +140,17 @@ def toggle_favourite(fixture_id):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/favourites/<int:favourite_id>', methods=['DELETE'])
-def delete_favourite(favourite_id):
-    """Remove a fixture from favourites by favourite ID."""
+@app.route('/api/favourites/<device_id>/<int:fixture_id>', methods=['DELETE'])
+def delete_favourite(device_id, fixture_id):
+    """Remove a fixture from favourites for a device."""
     try:
-        favourite = Favourite.query.get(favourite_id)
+        favourite = Favourite.query.filter_by(device_id=device_id, fixture_id=fixture_id).first()
         if not favourite:
             return jsonify({"error": "Favourite not found"}), 404
 
         db.session.delete(favourite)
         db.session.commit()
-        
+
         return jsonify({"status": "success"}), 200
     except (SQLAlchemyError, ValueError) as e:
         db.session.rollback()

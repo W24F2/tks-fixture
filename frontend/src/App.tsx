@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Header } from "./components/Header";
 import { FixtureList } from "./components/FixtureList";
+import { LoadingScreen } from "./components/LoadingScreen";
 import type { Fixture, FavouriteResponse } from "@/types/fixture";
 import { api, groupFixturesByDate } from "./lib/api";
 import { Card, CardContent } from "./components/ui/Card";
 import { Button } from "./components/ui/Button";
 import { Badge } from "./components/ui/Badge";
-import { Heart, RotateCcw, Info, CheckCircle } from "lucide-react";
-
-const FILTER_STORAGE_KEY = "fixtures_filter";
+import { RotateCcw, Info, Search, X } from "lucide-react";
 
 export default function App() {
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
@@ -19,23 +18,29 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | "favourites" | "upcoming" | "live">(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(FILTER_STORAGE_KEY);
-      if (stored === "all" || stored === "favourites" || stored === "upcoming" || stored === "live") {
-        return stored;
-      }
-    }
-    return "all";
-  });
+  const [filter, setFilter] = useState<"all" | "favourites" | "upcoming" | "live">("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const favouriteIds = new Set(favourites.map((f) => f.fixture_id));
+  const favouriteIds = useMemo(() => new Set(favourites.map((f) => f.fixture_id)), [favourites]);
 
-  const mergedFixtures = fixtures.map((fixture) => ({
-    ...fixture,
-    is_favourite: favouriteIds.has(fixture.id),
-  }));
+  const mergedFixtures = useMemo(() => 
+    fixtures
+      .map((fixture) => ({
+        ...fixture,
+        is_favourite: favouriteIds.has(fixture.id),
+      }))
+      .sort((a, b) => {
+        // Favourites first
+        if (a.is_favourite !== b.is_favourite) {
+          return a.is_favourite ? -1 : 1;
+        }
+        // Then by date/time
+        const dateA = new Date(a.event_date + "T" + (a.event_time || "00:00")).getTime();
+        const dateB = new Date(b.event_date + "T" + (b.event_time || "00:00")).getTime();
+        return dateA - dateB;
+      }), 
+  [fixtures, favouriteIds]);
 
   const loadData = useCallback(async () => {
     try {
@@ -73,41 +78,62 @@ export default function App() {
 
   const handleToggleFavourite = useCallback(async (fixtureId: number, isFavourite: boolean) => {
     if (isFavourite) {
-      const res = await api.removeFavourite(
-        favourites.find((f) => f.fixture_id === fixtureId)?.id || 0
-      );
+      const res = await api.removeFavourite(fixtureId);
       if (!res.error) {
         setFavourites((prev) => prev.filter((f) => f.fixture_id !== fixtureId));
       }
     } else {
-      const res = await api.toggleFavourite(fixtureId);
+      const res = await api.addFavourite(fixtureId);
       if (res.data) {
         setFavourites((prev) => [...prev, res.data!]);
       }
     }
-  }, [favourites]);
+  }, []);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  useEffect(() => {
-    localStorage.setItem(FILTER_STORAGE_KEY, filter);
-  }, [filter]);
+  // Filter fixtures based on filter and search
+  const filteredFixtures = useMemo(() => {
+    let result = mergedFixtures;
 
-  let filteredFixtures = mergedFixtures;
-  if (filter === "favourites") {
-    filteredFixtures = mergedFixtures.filter((f) => f.is_favourite);
-  } else if (filter === "upcoming") {
-    filteredFixtures = mergedFixtures.filter((f) => f.status === "upcoming");
-  } else if (filter === "live") {
-    filteredFixtures = mergedFixtures.filter((f) => f.status === "live");
-  }
+    if (filter === "favourites") {
+      result = result.filter((f) => f.is_favourite);
+    } else if (filter === "upcoming") {
+      result = result.filter((f) => f.status === "upcoming");
+    } else if (filter === "live") {
+      result = result.filter((f) => f.status === "live");
+    }
 
-  const groups = groupFixturesByDate(filteredFixtures);
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter((f) =>
+        f.title.toLowerCase().includes(query) ||
+        f.opposition?.toLowerCase().includes(query) ||
+        f.team?.toLowerCase().includes(query) ||
+        f.location?.toLowerCase().includes(query) ||
+        f.sport?.toLowerCase().includes(query)
+      );
+    }
 
-  const upcomingCount = mergedFixtures.filter((f) => f.status === "upcoming").length;
-  const liveCount = mergedFixtures.filter((f) => f.status === "live").length;
+    return result;
+  }, [mergedFixtures, filter, searchQuery]);
+
+  const groups = useMemo(() => groupFixturesByDate(filteredFixtures), [filteredFixtures]);
+
+  const upcomingCount = useMemo(() => mergedFixtures.filter((f) => f.status === "upcoming").length, [mergedFixtures]);
+  const liveCount = useMemo(() => mergedFixtures.filter((f) => f.status === "live").length, [mergedFixtures]);
+  const totalCount = useMemo(() => mergedFixtures.length, [mergedFixtures]);
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setFilter("all"); // Reset filter when searching
+  };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -117,11 +143,19 @@ export default function App() {
         favouriteCount={favourites.length}
         onFilterChange={setFilter}
         activeFilter={filter}
+        upcomingCount={upcomingCount}
+        liveCount={liveCount}
+        totalCount={totalCount}
+        searchQuery={searchQuery}
+        onSearchChange={handleSearchChange}
+        onClearSearch={clearSearch}
       />
 
       <main className="container mx-auto px-4 py-6">
         <AnimatePresence mode="wait">
-          {error && (
+          {isLoading ? (
+            <LoadingScreen key="loading" />
+          ) : error && (
             <motion.div
               key="error"
               initial={{ opacity: 0, y: -20 }}
@@ -140,37 +174,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="mb-6 flex flex-wrap items-center justify-between gap-3"
-        >
-          <div className="flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-primary animate-pulse-soft" aria-hidden="true" />
-            <span className="text-sm font-medium text-foreground">
-              {filter === "favourites"
-                ? `${favourites.length} favourite${favourites.length !== 1 ? "s" : ""}`
-                : `${mergedFixtures.length} fixture${mergedFixtures.length !== 1 ? "s" : ""}`}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Badge variant={filter === "upcoming" ? "default" : "secondary"} className="cursor-pointer" onClick={() => setFilter("upcoming")}>
-              Upcoming {upcomingCount}
-            </Badge>
-            <Badge variant={filter === "live" ? "success" : "secondary"} className="cursor-pointer" onClick={() => setFilter("live")}>
-              Live {liveCount}
-            </Badge>
-            <Badge variant={filter === "favourites" ? "warning" : "secondary"} className="cursor-pointer" onClick={() => setFilter("favourites")}>
-              <Heart className="h-3 w-3 fill-current mr-1" aria-hidden="true" />
-              Favourites {favourites.length}
-            </Badge>
-          </div>
-        </motion.div>
-
-        {isLoading ? (
-          <FixtureList groups={[]} onToggleFavourite={handleToggleFavourite} isLoading />
-        ) : groups.length === 0 && filter !== "all" ? (
+        {groups.length === 0 && filter !== "all" ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -180,11 +184,15 @@ export default function App() {
               <CardContent className="py-12 px-6">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                   {filter === "favourites" ? (
-                    <Heart className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                    <svg className="h-8 w-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
                   ) : filter === "live" ? (
                     <svg className="h-8 w-8 text-green-500 animate-pulse" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
                   ) : (
-                    <CheckCircle className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                    <svg className="h-8 w-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
                   )}
                 </div>
                 <h3 className="text-lg font-semibold text-foreground mb-2">
@@ -216,7 +224,7 @@ export default function App() {
           <FixtureList
             groups={groups}
             onToggleFavourite={handleToggleFavourite}
-            emptyMessage={filter === "favourites" ? "No favourite fixtures yet" : "No fixtures found"}
+            emptyMessage={filter === "favourites" ? "No favourite fixtures yet" : searchQuery ? `No fixtures found for "${searchQuery}"` : "No fixtures found"}
           />
         )}
 
@@ -236,6 +244,12 @@ export default function App() {
             <span>{mergedFixtures.length} total fixtures</span>
             <span>•</span>
             <span>{favourites.length} favourites</span>
+            {searchQuery && (
+              <>
+                <span>•</span>
+                <span>{filteredFixtures.length} results</span>
+              </>
+            )}
           </p>
         </motion.footer>
       </main>

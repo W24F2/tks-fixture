@@ -63,6 +63,14 @@ class Fixture(db.Model):  # type: ignore[name-defined]
                 print(f"[Error] Status calculation failed: {e}")
                 status = "Scheduled"
 
+        # Map backend status to frontend expected values
+        status_map = {
+            "Scheduled": "upcoming",
+            "Live": "live",
+            "Finished": "completed",
+        }
+        frontend_status = status_map.get(status, "upcoming")
+
         return {
             "id": self.id,
             "external_id": self.external_id,
@@ -75,16 +83,18 @@ class Fixture(db.Model):  # type: ignore[name-defined]
             "opposition": self.opposition,
             "team": self.team,
             "last_updated": self.last_updated.isoformat() if self.last_updated else None,
-            "status": status
+            "status": frontend_status
         }
 
 class Favourite(db.Model):  # type: ignore[name-defined]
     __tablename__ = 'favourites'
 
     id = db.Column(db.Integer, primary_key=True)
-    device_id = db.Column(db.String(36), nullable=True)
-    fixture_id = db.Column(db.Integer, nullable=False)
+    device_id = db.Column(db.String(36), nullable=False)
+    fixture_id = db.Column(db.Integer, db.ForeignKey('fixtures.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    fixture = db.relationship("Fixture", foreign_keys=[fixture_id])
 
     __table_args__ = (
         db.UniqueConstraint('device_id', 'fixture_id', name='uix_device_fixture'),
@@ -95,5 +105,6 @@ class Favourite(db.Model):  # type: ignore[name-defined]
             "id": self.id,
             "device_id": self.device_id,
             "fixture_id": self.fixture_id,
+            "fixture": self.fixture.to_dict() if self.fixture else None,
             "created_at": self.created_at.isoformat()
         }

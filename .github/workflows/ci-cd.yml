@@ -2,140 +2,113 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main, dev]
   pull_request:
-    branches: [dev, main]
+    branches: [main, dev]
 
 env:
-  PYTHON_VERSION: "3.12"
-  NODE_VERSION: "24"
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
 
 jobs:
   lint-and-test:
-    name: Lint & Test
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov ruff mypy lxml-stubs types-requests
+          pip install ruff pytest pytest-cov
 
-      - name: Run Ruff linter
+      - name: Lint with ruff
         run: ruff check .
 
-      - name: Run MyPy type checker
-        run: mypy app.py models.py database.py scraper.py scraper_worker.py || true
-
       - name: Run Python tests
-        run: pytest -v --tb=short
+        run: |
+          PYTHONPATH=. pytest tests/ -v --cov=. --cov-report=xml
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-
-      - name: Cache frontend dependencies
-        uses: actions/cache@v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
-        working-directory: ./frontend
-        run: npm ci
+        run: cd frontend && npm ci
 
-      - name: Run frontend linter
-        working-directory: ./frontend
-        run: npm run lint
+      - name: Lint frontend
+        run: cd frontend && npm run lint
 
       - name: Build frontend
-        working-directory: ./frontend
-        run: npm run build
-        env:
-          VITE_CONFIG_NATIVE_IGNORE_WARNING: "true"
+        run: cd frontend && npm run build
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: static/dist/
-          retention-days: 1
+      - name: Type check frontend
+        run: cd frontend && npm run typecheck
 
-  deploy:
-    name: Deploy to Server
+  build-and-deploy-dev:
     needs: lint-and-test
     if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: dev
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          name: dist
-          path: static/dist/
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Deploy to server
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Deploy to dev server
+        if: github.ref == 'refs/heads/dev'
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
           script: |
-            set -e
             cd /opt/fixtures/app
-
-            # Pull latest code
-            git fetch origin
-            git reset --hard origin/${{ github.ref_name }}
-            git clean -fd
-
-            # Install/update Python dependencies
-            source venv/bin/activate
-            pip install --upgrade pip
-            pip install -r requirements.txt
-
-            # Build frontend (rebuild to ensure manifest matches)
-            cd frontend
-            npm ci
-            npm run build
-            cd ..
-
-            # Copy built assets to static/dist
-            cp -r frontend/static/dist/* static/dist/
-
-            # Run database migrations if needed
-            python -c "from app import app, db; app.app_context().push(); db.create_all()" || true
-
-            # Restart services
+            git pull origin dev
+            make install-frontend build-frontend
             sudo systemctl reload fixtures-app
-            sudo systemctl reload fixtures-scraper
 
-            echo "Deployment complete!"
-
-      - name: Health check
+      - name: Deploy to production server
+        if: github.ref == 'refs/heads/main'
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
           script: |
-            sleep 5
-            curl -f http://localhost:5000/api/health || exit 1
-            echo "Health check passed!"
+            cd /opt/fixtures/app
+            git pull origin main
+            make install-frontend build-frontend
+            sudo systemctl reload fixtures-app
+            sudo systemctl restart fixtures-scraper.timer

@@ -14,13 +14,13 @@ class TestAppEndpoints:
         assert response.json == []
 
     def test_get_favourites_empty(self, client):
-        response = client.get('/api/favourites')
+        response = client.get('/api/favourites/test-device')
         assert response.status_code == 200
         assert response.json == []
 
-    def test_toggle_favourite_add(self, client, app):
+    def test_add_favourite(self, client, app):
         from models import Fixture, db
-        
+
         with app.app_context():
             fixture = Fixture(
                 external_id="test-fav-1",
@@ -32,14 +32,21 @@ class TestAppEndpoints:
             db.session.add(fixture)
             db.session.commit()
             fixture_id = fixture.id
-        
-        response = client.post(f'/api/favourites/{fixture_id}')
-        assert response.status_code == 201
-        assert response.json['status'] == 'added'
 
-    def test_toggle_favourite_remove(self, client, app):
+        response = client.post('/api/favourites', json={
+            'device_id': 'test-device',
+            'fixture_id': fixture_id
+        })
+        assert response.status_code == 201
+        assert response.json['fixture_id'] == fixture_id
+        assert 'id' in response.json
+        assert 'fixture' in response.json
+        assert 'created_at' in response.json
+        assert response.json['device_id'] == 'test-device'
+
+    def test_add_favourite_duplicate(self, client, app):
         from models import Favourite, Fixture, db
-        
+
         with app.app_context():
             fixture = Fixture(
                 external_id="test-fav-2",
@@ -50,19 +57,25 @@ class TestAppEndpoints:
             )
             db.session.add(fixture)
             db.session.commit()
-            
+
             fav = Favourite(fixture_id=fixture.id, device_id="test-device")
             db.session.add(fav)
             db.session.commit()
             fixture_id = fixture.id
-        
-        response = client.post(f'/api/favourites/{fixture_id}')
+
+        response = client.post('/api/favourites', json={
+            'device_id': 'test-device',
+            'fixture_id': fixture_id
+        })
         assert response.status_code == 200
-        assert response.json['status'] == 'removed'
+        assert response.json['fixture_id'] == fixture_id
+        assert 'id' in response.json
+        assert 'fixture' in response.json
+        assert 'created_at' in response.json
 
     def test_delete_favourite(self, client, app):
         from models import Favourite, Fixture, db
-        
+
         with app.app_context():
             fixture = Fixture(
                 external_id="test-fav-3",
@@ -73,18 +86,18 @@ class TestAppEndpoints:
             )
             db.session.add(fixture)
             db.session.commit()
-            
+
             fav = Favourite(fixture_id=fixture.id, device_id="test-device")
             db.session.add(fav)
             db.session.commit()
-            fav_id = fav.id
-        
-        response = client.delete(f'/api/favourites/{fav_id}')
+            fixture_id = fixture.id
+
+        response = client.delete(f'/api/favourites/test-device/{fixture_id}')
         assert response.status_code == 200
         assert response.json['status'] == 'success'
 
     def test_delete_favourite_not_found(self, client):
-        response = client.delete('/api/favourites/99999')
+        response = client.delete('/api/favourites/test-device/99999')
         assert response.status_code == 404
 
     @patch('app.TrumbaScraper')
