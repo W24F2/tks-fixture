@@ -3,7 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sports Fixtures</title>
+    <title>Sports Fixtures &amp; Schedules</title>
+
+    <!-- SEO: description, crawl directives, canonical, colour scheme -->
+    <meta name="description" content="Live and upcoming school sports fixtures, results and schedules. Filter by sport, follow your favourites, and never miss a match.">
+    <meta name="robots" content="index,follow">
+    <meta name="color-scheme" content="light dark">
+    <link rel="canonical" href="{{ request.url_root }}">
     
     <!-- PWA Meta Tags -->
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
@@ -17,7 +23,6 @@
     
     <!-- Preload critical resources -->
     {% if vite_manifest and vite_manifest['index.html'] %}
-        <link rel="preload" href="{{ url_for('static', filename='dist/' ~ vite_manifest['index.html'].file) }}" as="script">
         <link rel="modulepreload" href="{{ url_for('static', filename='dist/' ~ vite_manifest['index.html'].file) }}">
         {% if vite_manifest['index.html'].css %}
             {% for css_file in vite_manifest['index.html'].css %}
@@ -30,9 +35,34 @@
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap"></noscript>
+
+    <!-- SEO: Open Graph (Facebook/LinkedIn/iMessage) -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Sports Fixtures">
+    <meta property="og:title" content="Sports Fixtures &amp; Schedules">
+    <meta property="og:description" content="Live and upcoming school sports fixtures, results and schedules.">
+    <meta property="og:locale" content="en_AU">
+    <meta property="og:url" content="{{ request.url_root }}">
+
+    <!-- SEO: Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Sports Fixtures &amp; Schedules">
+    <meta name="twitter:description" content="Live and upcoming school sports fixtures, results and schedules.">
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"></noscript>
+
+    <!-- SEO: structured data so search engines understand the site -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Sports Fixtures",
+      "url": "{{ request.url_root }}",
+      "description": "Live and upcoming school sports fixtures, results and schedules.",
+      "inLanguage": "en-AU"
+    }
+    </script>
 </head>
 <body>
     <div id="root"></div>

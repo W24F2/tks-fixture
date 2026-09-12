@@ -27,6 +27,20 @@ def app():
 def client(app):
     return app.test_client()
 
+@pytest.fixture(autouse=True)
+def reset_scrape_cooldown():
+    """Reset the /api/fixtures/refresh debounce before every test.
+
+    The refresh endpoint keeps a module-level timestamp so a burst of clicks
+    cannot hammer the upstream feed. That state would otherwise leak between
+    tests and make a later refresh test short-circuit instead of running.
+    """
+    import app as app_module
+
+    app_module._LAST_REFRESH = 0.0
+    yield
+    app_module._LAST_REFRESH = 0.0
+
 @pytest.fixture
 def mock_scraper_response():
     return """<?xml version="1.0" encoding="utf-8"?>

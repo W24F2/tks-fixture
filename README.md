@@ -63,10 +63,12 @@ A modern, high-performance sports fixture tracking application with automated da
 - **Past Matches Tab** - Collapsible section showing historical matches
 - **New Events Indicator** - Toast notification + "NEW" badges when fresh fixtures arrive
 - **Smart Caching** - ETag-based stale-while-revalidate (30s) with auto-invalidation on refresh
-- **Smooth Animations** - Staggered entrance, morphing heart icons, page transitions (first-load only)
+- **Smooth Animations** - Shared motion tokens, staggered entrance, morphing heart icons, page transitions (first-load only)
+- **First-Visit Legal Gate** - Disclaimer + Terms of Service modal shown before first use, with versioned acceptance stored in localStorage and a footer link to review it any time
 - **Responsive Design** - Mobile-first, native filter dropdown on mobile, button group on desktop
 - **PWA Ready** - Manifest, icons, offline-capable service worker
-- **Performance Optimized** - Code-split, minified, compressed, cache-busted assets
+- **Performance Optimized** - Code-split, minified, compressed, cache-busted assets; Brotli + gzip; content-based ETag (`304`) on the fixtures API so clients skip re-downloading unchanged data
+- **SEO & Accessibility** - Semantic HTML, Open Graph + Twitter Cards, `robots.txt` + `sitemap.xml`, JSON-LD structured data; `prefers-reduced-motion` support, skip-to-content link, ARIA on all interactive controls, visible focus rings
 
 ## Quick Start
 
@@ -273,3 +275,5 @@ Apache License 2.0 - see [LICENSE](LICENSE)
 ## Disclaimer
 
 Fixture data is sourced from Trumba feeds and may not always be accurate. Cross-reference with official sources (e.g., Kingsnet) for definitive schedules.
+
+The full Disclaimer and Terms of Service are presented to first-time visitors in an in-app dialog (`frontend/src/components/LegalNotice.tsx`, copy in the same file; acceptance persisted by `frontend/src/lib/consent.ts`). The app is an unofficial, independent service and is not affiliated with any club, league, or venue.

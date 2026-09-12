@@ -1,43 +1,59 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import { Search, RefreshCw, Zap, Heart, Calendar, X, List, Clock, Filter } from "lucide-react";
+import { motion } from "framer-motion";
+import { Search, RefreshCw, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
-import { cn } from "@/lib/utils";
+
+export type Filter = "all" | "favourites" | "upcoming" | "live" | "past";
 
 interface HeaderProps {
   onRefresh: () => void;
   isRefreshing: boolean;
-  favouriteCount: number;
-  onFilterChange: (filter: "all" | "favourites" | "upcoming" | "live" | "past") => void;
-  activeFilter: "all" | "favourites" | "upcoming" | "live" | "past";
-  upcomingCount: number;
-  liveCount: number;
-  pastCount: number;
-  totalCount: number;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onClearSearch: () => void;
+  onFilterChange: (filter: Filter) => void;
+  activeFilter: Filter;
+  favouriteCount: number;
+  upcomingCount: number;
+  liveCount: number;
+  pastCount: number;
 }
+
+// PERF/ACCESSIBILITY: tab bar restored. Clicking a tab filters the main list;
+// the active tab is reflected for keyboard/AT users via aria-current.
+const FILTER_TABS: { key: Filter; label: string; count?: keyof HeaderProps }[] = [
+  { key: "all", label: "All" },
+  { key: "upcoming", label: "Upcoming", count: "upcomingCount" },
+  { key: "live", label: "Live", count: "liveCount" },
+  { key: "favourites", label: "Favourites", count: "favouriteCount" },
+  { key: "past", label: "Past", count: "pastCount" },
+];
 
 export function Header({
   onRefresh,
   isRefreshing,
-  favouriteCount,
-  onFilterChange,
-  activeFilter,
-  upcomingCount,
-  liveCount,
-  pastCount,
-  totalCount,
   searchQuery,
   onSearchChange,
   onClearSearch,
+  onFilterChange,
+  activeFilter,
+  favouriteCount,
+  upcomingCount,
+  liveCount,
+  pastCount,
 }: HeaderProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  const counts: Record<string, number> = {
+    favouriteCount,
+    upcomingCount,
+    liveCount,
+    pastCount,
+  };
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -50,19 +66,12 @@ export function Header({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filterOptions = [
-    { value: "all" as const, label: "All", count: totalCount, icon: List },
-    { value: "upcoming" as const, label: "Upcoming", count: upcomingCount, icon: Calendar },
-    { value: "live" as const, label: "Live", count: liveCount, icon: Zap },
-    { value: "past" as const, label: "Past", count: pastCount, icon: Clock },
-    { value: "favourites" as const, label: "Favourites", count: favouriteCount, icon: Heart },
-  ];
-
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between gap-4">
+        <div className="flex flex-wrap h-16 items-center justify-between gap-2 md:gap-4">
           <div className="flex items-center gap-3 shrink-0">
+            {/* PERF/ACCESSIBILITY: plays once on mount — no tab re-renders to replay it. */}
             <motion.div
               initial={{ scale: 0, rotate: -180 }}
               animate={{ scale: 1, rotate: 0 }}
@@ -74,7 +83,7 @@ export function Header({
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
               </svg>
             </motion.div>
-            <div>
+            <div className="hidden sm:block">
               <h1 className="font-display text-xl font-bold tracking-tight text-foreground">
                 Sports Fixtures
               </h1>
@@ -82,7 +91,7 @@ export function Header({
             </div>
           </div>
 
-          <div className="flex-1 flex items-center justify-center gap-2 max-w-2xl" ref={searchRef}>
+          <div className="w-full md:flex-1 md:w-auto flex items-center justify-center gap-2 max-w-md" ref={searchRef}>
             <div className="relative w-full max-w-md">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -111,62 +120,7 @@ export function Header({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Mobile filter dropdown */}
-            <div className="md:hidden relative">
-              <select
-                value={activeFilter}
-                onChange={(e) => onFilterChange(e.target.value as typeof activeFilter)}
-                className="appearance-none bg-background border border-input rounded-lg px-3 py-2 pr-10 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer"
-              >
-                {filterOptions.map((filter) => (
-                  <option key={filter.value} value={filter.value}>
-                    {filter.label} {filter.count > 0 && `(${filter.count})`}
-                  </option>
-                ))}
-              </select>
-              <Filter className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
-            </div>
-
-            {/* Desktop filter buttons */}
-            <div className="hidden md:flex items-center gap-1">
-              {filterOptions.map((filter) => {
-                const Icon = filter.icon;
-                const isActive = activeFilter === filter.value;
-                return (
-                  <motion.button
-                    key={filter.value}
-                    onClick={() => onFilterChange(filter.value)}
-                    className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200",
-                      isActive
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                    )}
-                    whileTap={{ scale: 0.95 }}
-                    aria-pressed={isActive}
-                  >
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                    <span>{filter.label}</span>
-                    {filter.count > 0 && (
-                      <motion.span
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="h-5 w-5 flex items-center justify-center rounded-full text-xs font-medium"
-                        style={{
-                          backgroundColor: isActive
-                            ? "rgba(255,255,255,0.2)"
-                            : "rgba(0,0,0,0.08)",
-                        }}
-                      >
-                        {filter.count}
-                      </motion.span>
-                    )}
-                  </motion.button>
-                );
-              })}
-            </div>
-
+          <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-end md:justify-start">
             <Button
               variant="ghost"
               size="icon"
@@ -184,7 +138,44 @@ export function Header({
             </Button>
           </div>
         </div>
+
+        {/* Filter tabs — restored. ARIA group + aria-current for screen readers. */}
+        <div className="flex items-center gap-1 overflow-x-auto pb-2 -mb-px" role="group" aria-label="Filter fixtures">
+          {FILTER_TABS.map((tab) => {
+            const isActive = activeFilter === tab.key;
+            const count = tab.count ? counts[tab.count] : undefined;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => onFilterChange(tab.key)}
+                aria-current={isActive ? "true" : undefined}
+                className={cn(
+                  "relative whitespace-nowrap px-3 py-2 text-sm font-medium rounded-lg transition-colors",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                )}
+              >
+                {tab.label}
+                {count !== undefined && (
+                  <span className={cn(
+                    "ml-1.5 rounded-full px-1.5 py-0.5 text-xs",
+                    isActive ? "bg-primary-foreground/20" : "bg-muted"
+                  )}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </header>
   );
+}
+
+// Local className joiner (avoids pulling the full tailwind-merge just for this).
+function cn(...classes: (string | false | null | undefined)[]): string {
+  return classes.filter(Boolean).join(" ");
 }

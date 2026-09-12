@@ -10,14 +10,29 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Sports Fixtures" />
     <link rel="manifest" href="/manifest.json" />
-    <title>Sports Fixtures</title>
+    <title>Sports Fixtures &amp; Schedules</title>
+
+    <!-- SEO: description + social sharing tags (mirrors the production spa.html) -->
+    <meta name="description" content="Live and upcoming school sports fixtures, results and schedules." />
+    <meta name="robots" content="index,follow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Sports Fixtures &amp; Schedules" />
+    <meta property="og:description" content="Live and upcoming school sports fixtures, results and schedules." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Sports Fixtures &amp; Schedules" />
+    <meta name="twitter:description" content="Live and upcoming school sports fixtures, results and schedules." />
 
     <!-- Preload critical resources -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" /></noscript>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" /></noscript>
+
+    <!-- SEO: structured data for search engines -->
+    <script type="application/ld+json">
+    { "@context": "https://schema.org", "@type": "WebSite", "name": "Sports Fixtures", "description": "Live and upcoming school sports fixtures, results and schedules." }
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -51,14 +51,6 @@ export function clearCache(): void {
   cache.clear();
 }
 
-export function getCachedData<T>(url: string): T | null {
-  const cached = cache.get(url);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return cached.data as T;
-  }
-  return null;
-}
-
 function getAuthHeaders(): HeadersInit {
   return {
     "Content-Type": "application/json",
@@ -148,19 +140,6 @@ export function formatTime(timeStr?: string): string {
   const ampm = hour >= 12 ? "PM" : "AM";
   const hour12 = hour % 12 || 12;
   return `${hour12}:${minutes} ${ampm}`;
-}
-
-export function getStatusColor(status: Fixture["status"]): string {
-  switch (status) {
-    case "live":
-      return "text-green-500";
-    case "completed":
-      return "text-muted-foreground";
-    case "cancelled":
-      return "text-red-500";
-    default:
-      return "text-primary";
-  }
 }
 
 export function getStatusBadge(status: Fixture["status"]): { label: string; className: string } {

@@ -1,10 +1,19 @@
+import hashlib
 import json
 import os
 import threading
+import time
 
 import requests
 from dotenv import load_dotenv
-from flask import jsonify, render_template, request, send_from_directory
+from flask import (
+    Response,
+    jsonify,
+    make_response,
+    render_template,
+    request,
+    send_from_directory,
+)
 from flask_caching import Cache
 from flask_compress import Compress
 from flask_limiter import Limiter
@@ -44,7 +53,11 @@ if os.getenv("REDIS_URL"):
 
 cache = Cache(app, config=cache_config)
 
-# Response compression
+# Response compression — prefer Brotli, fall back to gzip.
+# Brotli yields ~15-20% smaller payloads than gzip for JSON/HTML/JS/CSS.
+app.config["COMPRESS_ALGORITHM"] = ["br", "gzip"]
+app.config["COMPRESS_BR_LEVEL"] = 6  # balance speed vs ratio
+app.config["COMPRESS_MIN_SIZE"] = 500  # skip tiny responses
 Compress(app)
 
 # Rate limiting setup (Redis for production, memory for dev)
@@ -69,31 +82,105 @@ def serve_react(path):
     # Let API routes handle themselves
     if path.startswith('api/'):
         return jsonify({"error": "Not found"}), 404
-    
-    # Serve static files directly
-    # First check if path is a static file (e.g., /static/dist/...)
+
+    # Serve static assets directly (Vite emits content-hashed filenames).
+    # Hashed assets are immutable: cache for a year and answer 304s via conditional.
     if path.startswith('static/'):
-        static_file_path = os.path.join(app.static_folder, path[7:])  # Remove 'static/' prefix
-        if os.path.exists(static_file_path) and os.path.isfile(static_file_path):
-            return send_from_directory(app.static_folder, path[7:])
-    
-    # Also check direct path (for files at root of static)
-    static_file_path = os.path.join(app.static_folder, path)
-    if path and os.path.exists(static_file_path) and os.path.isfile(static_file_path):
-        return send_from_directory(app.static_folder, path)
-    
-    # Serve React index.html for all other routes (SPA routing)
-    return render_template('spa.html')
+        rel = path[7:]
+        full = os.path.join(app.static_folder, rel)
+        if os.path.exists(full) and os.path.isfile(full):
+            resp = send_from_directory(app.static_folder, rel, conditional=True)
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return resp
+
+    # Direct path to a real file at the static root (e.g. /manifest.json, /FS.svg)
+    if path and not path.endswith('/'):
+        full = os.path.join(app.static_folder, path)
+        if os.path.exists(full) and os.path.isfile(full):
+            resp = send_from_directory(app.static_folder, path, conditional=True)
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return resp
+
+    # SPA entry — must NOT be cached so new deploys are picked up immediately.
+    resp = make_response(render_template('spa.html'))
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+# --- Defensive headers on every response (security + SEO) ---
+@app.after_request
+def add_security_headers(resp):
+    """SECURITY/SEO: attach defensive headers to all responses."""
+    # Stop MIME sniffing (defeats polyglot/upload attacks).
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    # Disallow framing by other origins (clickjacking protection).
+    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    # Limit referrer leakage to same-origin/trusted.
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    # Legacy XSS auditor hint (harmless on modern browsers).
+    resp.headers.setdefault("X-XSS-Protection", "1; mode=block")
+    # Declare content language for better a11y/SEO.
+    resp.headers.setdefault("Content-Language", "en-AU")
+    # Ensure negotiated (gzip/brotli) and ETag responses aren't wrongly shared.
+    resp.headers["Vary"] = "Accept-Encoding, If-None-Match"
+    return resp
+
+
+# --- SEO: robots.txt + sitemap.xml (helps crawlers index efficiently) ---
+@app.route('/robots.txt')
+def robots_txt():
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        f"Sitemap: {request.url_root}sitemap.xml\n"
+    )
+    return Response(body, mimetype="text/plain")
+
+
+@app.route('/sitemap.xml')
+def sitemap_xml():
+    # Single-page SPA: only the canonical root URL is indexable.
+    loc = request.url_root.rstrip('/') + '/'
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f'  <url><loc>{loc}</loc><changefreq>hourly</changefreq>'
+        f'<priority>1.0</priority></url>\n'
+        '</urlset>\n'
+    )
+    return Response(body, mimetype="application/xml")
 
 
 # --- API Routes ---
 
 @app.route('/api/fixtures')
-@cache.cached(timeout=30, key_prefix='api_fixtures')
 def get_fixtures():
-    """API endpoint to get fixtures in JSON format with caching."""
+    """API endpoint to get fixtures in JSON format.
+
+    PERF: content-based ETag + HTTP 304.
+    The frontend (api.ts) sends If-None-Match on every poll. When the fixture
+    set is unchanged we reply 304 with an empty body instead of re-sending the
+    full JSON payload. This finally delivers the "stale-while-revalidate"
+    behaviour the README promises but the old @cache.cached decorator never did.
+    """
     fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
-    return jsonify([f.to_dict() for f in fixtures])
+    data = [f.to_dict() for f in fixtures]
+
+    # Stable, order-independent fingerprint of the payload.
+    payload = json.dumps(data, separators=(",", ":"), sort_keys=True)
+    etag = hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+    # 304: client already has this exact version -> save bandwidth.
+    if request.headers.get("If-None-Match") == etag:
+        return Response(
+            status=304,
+            headers={"ETag": etag, "Cache-Control": "public, max-age=30"},
+        )
+
+    resp = jsonify(data)
+    resp.headers["ETag"] = etag
+    resp.headers["Cache-Control"] = "public, max-age=30"
+    return resp
 
 
 @app.route('/api/favourites/<device_id>', methods=['GET'])
@@ -156,13 +243,35 @@ def delete_favourite(device_id, fixture_id):
         return jsonify({"error": str(e)}), 500
 
 
+# Module-level guard so a burst of refresh clicks can't hammer the upstream feed.
+_LAST_REFRESH = 0.0
+
 @app.route('/api/fixtures/refresh', methods=['POST'])
 def refresh_fixtures():
-    """Trigger a fixture refresh."""
+    """Trigger a fixture refresh.
+
+    SECURITY/PERF: a debounce guard prevents clients from abusing this endpoint
+    to DDoS the external Trumba XML feed. If a scrape happened within
+    REFRESH_COOLDOWN seconds we skip the (expensive) network call and just tell
+    the client the data is current — the scheduled worker still refreshes on time.
+    """
+    global _LAST_REFRESH
+    REFRESH_COOLDOWN = 60  # seconds
+    if time.monotonic() - _LAST_REFRESH < REFRESH_COOLDOWN:
+        return jsonify({"message": "Data is up to date"}), 200
+
     try:
         scraper = TrumbaScraper()
-        count = scraper.scrape_and_store()
-        return jsonify({"message": f"Refreshed {count} fixtures"}), 200
+        # FIX: the real method is `scrape()` (returns (new_count, updated_count));
+        # `scrape_and_store()` never existed, so the endpoint 500'd. We surface both
+        # counts so the UI can report what changed.
+        new_count, updated_count = scraper.scrape()
+        _LAST_REFRESH = time.monotonic()
+        return jsonify({
+            "message": f"Refreshed fixtures (new: {new_count}, updated: {updated_count})",
+            "new": new_count,
+            "updated": updated_count,
+        }), 200
     except (ValueError, RuntimeError, requests.RequestException) as e:
         return jsonify({"error": str(e)}), 500
 
@@ -186,10 +295,9 @@ def ratelimit_handler(e):
 
 
 # --- Cache Invalidation Helper ---
-
-def invalidate_fixture_cache():
-    """Call this after scraping to clear cached data."""
-    cache.delete('api_fixtures')
+# NOTE: removed the old `invalidate_fixture_cache()` helper. The /api/fixtures
+# response now carries a content-based ETag, so the frontend simply revalidates
+# with If-None-Match on every poll — no server-side cache key to invalidate.
 
 
 # --- Local Execution Entry Point ---
