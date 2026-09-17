@@ -49,7 +49,7 @@ cache_config = {
     "CACHE_DEFAULT_TIMEOUT": 60,
 }
 if os.getenv("REDIS_URL"):
-    cache_config["CACHE_REDIS_URL"] = os.getenv("REDIS_URL")  # type: ignore[assignment]
+    cache_config["CACHE_REDIS_URL"] = os.getenv("REDIS_URL")
 
 cache = Cache(app, config=cache_config)
 
@@ -69,11 +69,7 @@ limiter = Limiter(
     storage_uri=limiter_storage
 )
 
-# Configuration variables read from environment or local context
-TRUMBA_XML_URL = os.getenv('TRUMBA_XML_URL')
-
-
-# --- Serve React SPA ---
+# --- API Routes ---
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -243,6 +239,10 @@ def delete_favourite(device_id, fixture_id):
         return jsonify({"error": str(e)}), 500
 
 
+# Refresh cooldown: seconds to wait between manual refresh attempts.
+# Prevents hammering the upstream Trumba XML feed on repeated client clicks.
+REFRESH_COOLDOWN = int(os.getenv("REFRESH_COOLDOWN", "60"))
+
 # Module-level guard so a burst of refresh clicks can't hammer the upstream feed.
 _LAST_REFRESH = 0.0
 
@@ -256,15 +256,11 @@ def refresh_fixtures():
     the client the data is current — the scheduled worker still refreshes on time.
     """
     global _LAST_REFRESH
-    REFRESH_COOLDOWN = 60  # seconds
     if time.monotonic() - _LAST_REFRESH < REFRESH_COOLDOWN:
         return jsonify({"message": "Data is up to date"}), 200
 
     try:
         scraper = TrumbaScraper()
-        # FIX: the real method is `scrape()` (returns (new_count, updated_count));
-        # `scrape_and_store()` never existed, so the endpoint 500'd. We surface both
-        # counts so the UI can report what changed.
         new_count, updated_count = scraper.scrape()
         _LAST_REFRESH = time.monotonic()
         return jsonify({
@@ -292,12 +288,6 @@ def not_found(e):
 @app.errorhandler(429)
 def ratelimit_handler(e):
     return jsonify({"error": "Rate limit exceeded"}), 429
-
-
-# --- Cache Invalidation Helper ---
-# NOTE: removed the old `invalidate_fixture_cache()` helper. The /api/fixtures
-# response now carries a content-based ETag, so the frontend simply revalidates
-# with If-None-Match on every poll — no server-side cache key to invalidate.
 
 
 # --- Local Execution Entry Point ---

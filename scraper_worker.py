@@ -104,10 +104,10 @@ def run_scheduled_scrape():
             scraper = TrumbaScraper(trumba_url)
             new_count, updated_count = scraper.scrape()
 
-            # PERF/SEO: no explicit cache invalidation needed. /api/fixtures now
-            # derives its ETag from the serialized payload, so as soon as the
-            # data changes the next client poll automatically receives a new ETag
-            # and re-downloads — zero stale-cache risk, zero manual invalidation.
+        # PERF/SEO: no explicit cache invalidation needed. /api/fixtures derives its
+        # ETag from the serialized payload, so as soon as the data changes the next
+        # client poll automatically receives a new ETag and re-downloads — zero
+        # stale-cache risk, zero manual invalidation.
 
             logger.info(f"Scrape completed. New: {new_count}, Updated: {updated_count}")
             return True

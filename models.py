@@ -1,8 +1,10 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
+logger = logging.getLogger(__name__)
 
 try:
     import zoneinfo
@@ -24,8 +26,6 @@ class Fixture(db.Model):  # type: ignore[name-defined]
     team = db.Column(db.String(100))
     raw_content = db.Column(db.Text)  # Store original HTML for fallback/debugging
     last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-    __table_args__ = ()
 
     def to_dict(self):
         # Determine status based on current time in Sydney
@@ -60,7 +60,7 @@ class Fixture(db.Model):  # type: ignore[name-defined]
                 else:
                     status = "Finished"
             except (ValueError, AttributeError) as e:
-                print(f"[Error] Status calculation failed: {e}")
+                logger.error("Status calculation failed: %s", e, exc_info=True)
                 status = "Scheduled"
 
         # Map backend status to frontend expected values
