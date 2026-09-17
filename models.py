@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import zoneinfo
-except (KeyError, OSError):
+except (ImportError, KeyError, OSError):
     from backports import zoneinfo  # type: ignore[attr-defined,no-redef,import-untyped]
 
 class Fixture(db.Model):  # type: ignore[name-defined]

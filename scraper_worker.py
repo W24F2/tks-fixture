@@ -12,7 +12,7 @@ import requests
 
 try:
     import zoneinfo
-except (KeyError, OSError):
+except (ImportError, KeyError, OSError):
     from backports import zoneinfo  # type: ignore[attr-defined,no-redef,import-untyped]
 
 # Add the project root to path
