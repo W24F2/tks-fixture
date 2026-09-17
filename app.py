@@ -179,6 +179,24 @@ def get_fixtures():
     return resp
 
 
+@app.route('/api/fixtures/hash')
+def fixtures_hash():
+    """Return a lightweight content hash of the fixture set.
+
+    The frontend can poll this endpoint on every refresh cycle to decide
+    whether a full data fetch is needed.  The response body is a single
+    JSON line (~40 bytes) instead of the full fixture payload (often >10 KB).
+
+    Returns:
+        { "hash": "<sha1 hex>" }
+    """
+    fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
+    data = [f.to_dict() for f in fixtures]
+    payload = json.dumps(data, separators=(",", ":"), sort_keys=True)
+    etag = hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    return jsonify({"hash": etag}), 200
+
+
 @app.route('/api/favourites/<device_id>', methods=['GET'])
 def get_favourites(device_id):
     """Fetch all favourites for a device."""

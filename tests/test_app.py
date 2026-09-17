@@ -144,3 +144,52 @@ class TestAppEndpoints:
         response = client.get('/api/nonexistent')
         assert response.status_code == 404
         assert response.json['error'] == 'Not found'
+
+    def test_fixtures_hash_empty(self, client):
+        response = client.get('/api/fixtures/hash')
+        assert response.status_code == 200
+        assert 'hash' in response.json
+        assert len(response.json['hash']) == 40  # SHA1 hex digest
+
+    def test_fixtures_hash_consistent(self, client):
+        """Two consecutive calls without changes must return the same hash."""
+        r1 = client.get('/api/fixtures/hash')
+        r2 = client.get('/api/fixtures/hash')
+        assert r1.json['hash'] == r2.json['hash']
+
+    def test_fixtures_hash_changes_on_data_change(self, client, app):
+        """Adding a fixture must change the hash."""
+        from models import Fixture, db
+        from datetime import datetime, time, timezone
+
+        r1 = client.get('/api/fixtures/hash')
+        old_hash = r1.json['hash']
+
+        with app.app_context():
+            fixture = Fixture(
+                external_id="test-hash-change",
+                title="Hash Change Fixture",
+                location="Test",
+                event_date=datetime(2026, 8, 15, 19, 0, tzinfo=timezone.utc),
+                event_time=time(19, 0)
+            )
+            db.session.add(fixture)
+            db.session.commit()
+
+        r2 = client.get('/api/fixtures/hash')
+        assert r2.json['hash'] != old_hash
+
+    def test_get_fixtures_with_hash(self, client):
+        """GET /api/fixtures should return fixtures and ETag header."""
+        response = client.get('/api/fixtures')
+        assert response.status_code == 200
+        assert 'ETag' in response.headers
+
+    def test_get_fixtures_etag_304(self, client):
+        """Sending If-None-Match with a matching ETag should return 304."""
+        r1 = client.get('/api/fixtures')
+        etag = r1.headers.get('ETag')
+        assert etag is not None
+
+        r2 = client.get('/api/fixtures', headers={'If-None-Match': etag})
+        assert r2.status_code == 304

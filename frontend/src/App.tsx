@@ -33,6 +33,10 @@ export default function App() {
   const [pastCollapsed, setPastCollapsed] = useState(true);
   const [newEvents, setNewEvents] = useState<Set<number>>(new Set());
   const previousFixturesRef = useRef<Fixture[]>([]);
+  // Track the last known content hash. When unchanged we skip the full data
+  // fetch entirely, saving the ~10-50 KB payload on every poll cycle.
+  // Using a ref avoids stale-closure issues in the useCallback.
+  const lastHashRef = useRef<string | null>(null);
 
   // LEGAL: first-visit disclaimer/terms gate. `legalMode` distinguishes the
   // blocking first-visit gate from the footer-triggered review dialog.
@@ -94,12 +98,27 @@ export default function App() {
   const loadData = useCallback(async () => {
     try {
       setError(null);
-      const fixturesRes = await api.getFixtures();
 
+      // STEP 1: Lightweight hash check (~40 bytes response).
+      const hashRes = await api.checkHash();
+      if (hashRes.error) throw new Error(hashRes.error);
+
+      const currentHash = hashRes.data?.hash;
+
+      // STEP 2: If data is unchanged, skip the full payload fetch.
+      // The UI keeps the already-rendered fixtures; save the ~10-50 KB body.
+      if (currentHash && currentHash === lastHashRef.current) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+
+      // STEP 3: Hash differs (or this is the first load) — fetch full data.
+      const fixturesRes = await api.getFixtures();
       if (fixturesRes.error) throw new Error(fixturesRes.error);
 
       const newFixtures = fixturesRes.data || [];
-      
+
       if (previousFixturesRef.current.length > 0) {
         const prevIds = new Set(previousFixturesRef.current.map(f => f.id));
         const newIds = new Set(newFixtures.map(f => f.id));
@@ -108,10 +127,11 @@ export default function App() {
           setNewEvents(new Set(addedIds));
         }
       }
-      
+
       previousFixturesRef.current = newFixtures;
       setFixtures(newFixtures);
       setLastUpdated(new Date());
+      if (currentHash) lastHashRef.current = currentHash;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load fixtures");
     } finally {

@@ -47,6 +47,10 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<ApiResp
   }
 }
 
+export interface HashResponse {
+  hash: string;
+}
+
 export function clearCache(): void {
   cache.clear();
 }
@@ -60,6 +64,15 @@ function getAuthHeaders(): HeadersInit {
 export const api = {
   async getFixtures(): Promise<ApiResponse<Fixture[]>> {
     return fetchJson<Fixture[]>(`${API_BASE}/fixtures`);
+  },
+
+  /**
+   * Lightweight endpoint to check if fixture data has changed.
+   * Returns the current content hash (~40 bytes). Compare against the
+   * previous hash — if unchanged, skip the full fetch and re-render.
+   */
+  async checkHash(): Promise<ApiResponse<HashResponse>> {
+    return fetchJson<HashResponse>(`${API_BASE}/fixtures/hash`);
   },
 
   async refreshFixtures(): Promise<ApiResponse<{ message: string }>> {
