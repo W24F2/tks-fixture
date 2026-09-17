@@ -15,7 +15,6 @@ backlog = 2048
 workers = int(os.getenv("GUNICORN_WORKERS", str(multiprocessing.cpu_count() * 2 + 1)))
 worker_class = os.getenv("GUNICORN_WORKER_CLASS", "gthread")
 threads = int(os.getenv("GUNICORN_THREADS", "4"))
-worker_connections = 1000
 
 # Timeouts
 timeout = 30

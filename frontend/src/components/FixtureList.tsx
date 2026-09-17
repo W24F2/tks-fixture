@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { motion, AnimatePresence, type Variants } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { FixtureGroup } from "@/types/fixture";
 import { FixtureCard } from "./FixtureCard";
 import { formatDate } from "@/lib/api";
 import { Card } from "./ui/Card";
 import { Badge } from "./ui/Badge";
 import { Skeleton } from "./ui/Skeleton";
+import { Heart, Calendar } from "lucide-react";
+import { slideInLeft, fadeUp, EASE, DURATION, STAGGER } from "@/lib/motion";
 
 interface FixtureListProps {
   groups: FixtureGroup[];
@@ -19,24 +20,9 @@ interface FixtureListProps {
   isPast?: boolean;
 }
 
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.4,
-      ease: [0.25, 0.46, 0.45, 0.94] as const,
-    },
-  },
-  exit: { opacity: 0, y: -20, transition: { duration: 0.2 } },
-};
-
-const dateHeaderVariants: Variants = {
-  hidden: { opacity: 0, x: -20 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.3 } },
-  exit: { opacity: 0, x: 20, transition: { duration: 0.2 } },
-};
+// PERF/ACCESSIBILITY: date headers and items animate in exactly once, the first
+// time they scroll into view (viewport once:true) — never replay on re-render.
+// Shared tokens from lib/motion.ts keep the feel identical to the cards.
 
 export function FixtureList({
   groups,
@@ -47,19 +33,11 @@ export function FixtureList({
   onClearNewEvents,
   isPast,
 }: FixtureListProps) {
-  const hasAnimatedRef = useRef(false);
-
-  useEffect(() => {
-    hasAnimatedRef.current = true;
-  }, []);
-
-  const isFirstMount = !hasAnimatedRef.current;
-
   if (isLoading) {
     return (
       <div className="space-y-6" role="status" aria-label="Loading fixtures">
         {[...Array(5)].map((_, i) => (
-          <motion.div key={i} initial={isFirstMount ? { opacity: 0 } : false} animate={{ opacity: 1 }} transition={{ delay: i * 0.1 }}>
+          <motion.div key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: DURATION.base, ease: EASE, delay: i * STAGGER }}>
             <Card className="p-4">
               <div className="space-y-3">
                 <Skeleton className="h-6 w-1/4 rounded" />
@@ -80,8 +58,11 @@ export function FixtureList({
   if (groups.length === 0) {
     return (
       <motion.div
-        initial={isFirstMount ? { opacity: 0, y: 20 } : false}
-        animate={{ opacity: 1, y: 0 }}
+        variants={fadeUp}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+        transition={{ duration: DURATION.base, ease: EASE }}
         className="text-center py-12 px-4"
       >
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
@@ -100,16 +81,26 @@ export function FixtureList({
       {groups.map((group) => (
         <section key={group.date} className="space-y-3">
           <motion.div
-            variants={dateHeaderVariants}
-            initial={isFirstMount ? "hidden" : false}
-            animate="visible"
-            exit="exit"
+            variants={slideInLeft}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.5 }}
+            transition={{ duration: DURATION.base, ease: EASE }}
             className="flex items-center gap-3 px-1"
           >
             <div className="h-px flex-1 bg-border" />
             <span className="flex items-center gap-2 whitespace-nowrap px-3 py-1.5 rounded-full bg-muted text-sm font-medium text-foreground">
-              <span className="text-primary">📅</span>
-              {formatDate(group.date)}
+              {group.date === "favourites" ? (
+                <>
+                  <Heart className="h-4 w-4 text-red-500 fill-red-500" aria-hidden="true" />
+                  <span>Favourites</span>
+                </>
+              ) : (
+                <>
+                  <Calendar className="h-4 w-4 text-primary" aria-hidden="true" />
+                  {formatDate(group.date)}
+                </>
+              )}
               <Badge variant="secondary" className="ml-1">
                 {group.fixtures.length} {group.fixtures.length === 1 ? "fixture" : "fixtures"}
               </Badge>
@@ -117,14 +108,13 @@ export function FixtureList({
             <div className="h-px flex-1 bg-border" />
           </motion.div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="list" aria-label={`Fixtures for ${formatDate(group.date)}`}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="list" aria-label={group.date === "favourites" ? "Favourite fixtures" : `Fixtures for ${formatDate(group.date)}`}>
             {group.fixtures.map((fixture, fixtureIndex) => (
               <FixtureCard
                 key={fixture.id}
                 fixture={fixture}
                 onToggleFavourite={onToggleFavourite}
                 index={fixtureIndex}
-                isFirstMount={isFirstMount}
                 isNew={newEventIds?.has(fixture.id)}
                 onClearNewEvents={onClearNewEvents}
                 isPast={isPast}

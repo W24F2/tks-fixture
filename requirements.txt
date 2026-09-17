@@ -10,3 +10,4 @@ flask-caching
 redis
 mysql-connector-python
 flask-compress
+backports.zoneinfo;python_version<"3.12"

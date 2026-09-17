@@ -1,14 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useDeferredValue } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Header } from "./components/Header";
+import { Header, type Filter } from "./components/Header";
 import { FixtureList } from "./components/FixtureList";
 import { LoadingScreen } from "./components/LoadingScreen";
+import { LegalNotice, type LegalMode } from "./components/LegalNotice";
+import { acceptTerms, hasAcceptedCurrentTerms } from "./lib/consent";
 import type { Fixture, FixtureGroup } from "@/types/fixture";
-import { api, groupFixturesByDate, clearCache } from "./lib/api";
+import { api, groupFixturesByDate, clearCache, groupFixturesWithFavouritesFirst } from "./lib/api";
 import { getFavourites, toggleFavourite, isFavourite } from "./lib/favourites";
 import { getFixtureStatusInSydney, formatSydneyTime, formatSydneyDate, isPastDate } from "./lib/timezone";
+import { fadeUp, fadeIn, EASE, EASE_IN_OUT, DURATION } from "@/lib/motion";
 import { Card, CardContent } from "./components/ui/Card";
 import { Button } from "./components/ui/Button";
 import { RotateCcw, Info, Search, X, Calendar, Zap, Heart, ChevronDown, Clock } from "lucide-react";
@@ -18,12 +21,23 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | "favourites" | "upcoming" | "live" | "past">("all");
+  // Tabs are back (Past / Upcoming / Favourites, plus All & Live). Default to
+  // "upcoming" per request — the Upcoming tab is highlighted on load.
+  const [filter, setFilter] = useState<Filter>("upcoming");
   const [searchQuery, setSearchQuery] = useState("");
+  // PERF/A11Y: defer the search term so typing stays responsive. The heavy
+  // filter/grouping work runs against a "stale" value while the user is still
+  // keying, keeping the input at 60fps even with many fixtures.
+  const deferredQuery = useDeferredValue(searchQuery);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [pastCollapsed, setPastCollapsed] = useState(true);
   const [newEvents, setNewEvents] = useState<Set<number>>(new Set());
   const previousFixturesRef = useRef<Fixture[]>([]);
+
+  // LEGAL: first-visit disclaimer/terms gate. `legalMode` distinguishes the
+  // blocking first-visit gate from the footer-triggered review dialog.
+  const [legalOpen, setLegalOpen] = useState(false);
+  const [legalMode, setLegalMode] = useState<LegalMode>("gate");
 
   const [favouriteIds, setFavouriteIds] = useState<Set<number>>(() => new Set(getFavourites()));
   
@@ -42,6 +56,15 @@ export default function App() {
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('sf-favourites-changed', handleStorage);
     };
+  }, []);
+
+  // LEGAL: prompt on first visit (or when the terms version changes), since
+  // acceptance is versioned in localStorage. No login is required by the app.
+  useEffect(() => {
+    if (!hasAcceptedCurrentTerms()) {
+      setLegalMode("gate");
+      setLegalOpen(true);
+    }
   }, []);
 
   const mergedFixtures = useMemo(() => {
@@ -134,8 +157,8 @@ export default function App() {
       result = result.filter((f) => f.status === "completed");
     }
 
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
+    if (deferredQuery.trim()) {
+      const query = deferredQuery.toLowerCase().trim();
       result = result.filter((f) =>
         f.title.toLowerCase().includes(query) ||
         f.opposition?.toLowerCase().includes(query) ||
@@ -146,9 +169,9 @@ export default function App() {
     }
 
     return result;
-  }, [mergedFixtures, filter, searchQuery]);
+  }, [mergedFixtures, filter, deferredQuery]);
 
-  const groups = useMemo(() => groupFixturesByDate(filteredFixtures), [filteredFixtures]);
+  const groups = useMemo(() => groupFixturesWithFavouritesFirst(filteredFixtures), [filteredFixtures]);
 
   const pastGroups = useMemo(() => {
     const pastFixtures = mergedFixtures.filter(f => isPastDate(f.event_date) && f.status === 'completed');
@@ -157,12 +180,14 @@ export default function App() {
 
   const upcomingCount = useMemo(() => mergedFixtures.filter((f) => f.status === "upcoming").length, [mergedFixtures]);
   const liveCount = useMemo(() => mergedFixtures.filter((f) => f.status === "live").length, [mergedFixtures]);
+  // pastCount is shown in the "Past Matches" collapsible label (All view only).
   const pastCount = useMemo(() => mergedFixtures.filter((f) => f.status === "completed").length, [mergedFixtures]);
-  const totalCount = useMemo(() => mergedFixtures.length, [mergedFixtures]);
+  const favouriteCount = favouriteIds.size;
 
+  // PERF: search filters within the active tab (no reset to "all") — keeps the
+  // tab the user selected as the scope for the query.
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-    setFilter("all");
   };
 
   const clearSearch = () => {
@@ -173,35 +198,67 @@ export default function App() {
     setNewEvents(new Set());
   }, []);
 
+  // LEGAL: persist acceptance locally and dismiss the gate.
+  const handleAcceptTerms = useCallback(() => {
+    acceptTerms();
+    setLegalOpen(false);
+  }, []);
+
+  const openLegalNotice = useCallback(() => {
+    setLegalMode("review");
+    setLegalOpen(true);
+  }, []);
+
+  const closeLegalNotice = useCallback(() => {
+    setLegalOpen(false);
+  }, []);
+
+  // LEGAL: while the first-visit gate is up, everything behind it is made inert
+  // (and hidden from assistive tech) so only the dialog is reachable.
+  const legalGateActive = legalOpen && legalMode === "gate";
+
   return (
-    <div className="min-h-screen bg-background">
-      <Header
+    <>
+    <div
+      className="min-h-screen bg-background"
+      aria-hidden={legalGateActive || undefined}
+      {...(legalGateActive ? { inert: true } : {})}
+    >
+      {/* A11Y: keyboard/AT users can jump straight to the content, skipping the header. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:no-underline"
+      >
+        Skip to content
+      </a>
+
+              <Header
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
-        favouriteCount={favouriteIds.size}
-        onFilterChange={setFilter}
-        activeFilter={filter}
-        upcomingCount={upcomingCount}
-        liveCount={liveCount}
-        pastCount={pastCount}
-        totalCount={totalCount}
         searchQuery={searchQuery}
         onSearchChange={handleSearchChange}
         onClearSearch={clearSearch}
+        onFilterChange={setFilter}
+        activeFilter={filter}
+        favouriteCount={favouriteCount}
+        upcomingCount={upcomingCount}
+        liveCount={liveCount}
+        pastCount={pastCount}
       />
 
-      <main className="container mx-auto px-4 py-6">
+      <main id="main-content" className="container mx-auto px-4 py-6" tabIndex={-1}>
         <AnimatePresence mode="wait">
           {isLoading ? (
             <LoadingScreen key="loading" />
           ) : error && (
             <motion.div
               key="error"
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="mb-6 rounded-lg border border-destructive/20 bg-destructive/5 p-4 flex items-center gap-3"
-              role="alert"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: DURATION.base, ease: EASE }}
+                className="mb-6 rounded-lg border border-destructive/20 bg-destructive/5 p-4 flex items-center gap-3"
+                role="alert"
             >
               <Info className="h-5 w-5 text-destructive flex-shrink-0" aria-hidden="true" />
               <p className="text-sm text-destructive flex-1">{error}</p>
@@ -291,6 +348,8 @@ export default function App() {
                   onClick={() => setPastCollapsed(!pastCollapsed)}
                   className="w-full flex items-center justify-between px-4 py-3 bg-muted rounded-lg hover:bg-accent transition-colors"
                   whileTap={{ scale: 0.98 }}
+                  aria-expanded={!pastCollapsed}
+                  aria-controls="past-matches"
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
@@ -303,7 +362,7 @@ export default function App() {
                   </div>
                   <motion.div
                     animate={{ rotate: pastCollapsed ? -90 : 0 }}
-                    transition={{ duration: 0.2 }}
+                    transition={{ duration: DURATION.fast, ease: EASE_IN_OUT }}
                     className="text-muted-foreground"
                   >
                     <ChevronDown className="h-5 w-5" aria-hidden="true" />
@@ -312,13 +371,16 @@ export default function App() {
 
                 <AnimatePresence>
                   {!pastCollapsed && (
-                    <motion.div
-                      key="past-expanded"
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="mt-4 overflow-hidden"
-                    >
+                <motion.div
+                  key="past-expanded"
+                  id="past-matches"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: DURATION.base, ease: EASE_IN_OUT }}
+                  style={{ transformOrigin: "top" }}
+                  className="mt-4 overflow-hidden"
+                >
                       <FixtureList
                         groups={pastGroups}
                         onToggleFavourite={handleToggleFavourite}
@@ -333,10 +395,14 @@ export default function App() {
 
             {newEvents.size > 0 && filter !== "favourites" && (
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
+                variants={fadeUp}
+                initial="hidden"
+                animate="visible"
+                exit="hidden"
+                transition={{ duration: DURATION.base, ease: EASE }}
                 className="fixed bottom-4 right-4 z-50"
+                role="status"
+                aria-live="polite"
               >
                 <Card className="shadow-lg border-primary/30">
                   <CardContent className="p-4 flex items-center gap-3 min-w-[280px]">
@@ -358,8 +424,10 @@ export default function App() {
         )}
 
         <motion.footer
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          variants={fadeIn}
+          initial="hidden"
+          animate="visible"
+          transition={{ duration: DURATION.slow, ease: EASE }}
           className="mt-12 py-8 border-t text-center"
         >
           <p className="text-sm text-muted-foreground flex items-center justify-center gap-2 flex-wrap">
@@ -380,8 +448,25 @@ export default function App() {
               </>
             )}
           </p>
+          {/* LEGAL: re-open the disclaimer/terms at any time. */}
+          <button
+            type="button"
+            onClick={openLegalNotice}
+            className="mt-3 text-xs font-medium text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            Terms and Disclaimer
+          </button>
         </motion.footer>
       </main>
     </div>
+
+      {/* LEGAL: first-visit consent gate (and footer-triggered review). */}
+      <LegalNotice
+        open={legalOpen}
+        mode={legalMode}
+        onAccept={handleAcceptTerms}
+        onClose={closeLegalNotice}
+      />
+    </>
   );
 }

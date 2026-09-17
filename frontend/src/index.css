@@ -23,7 +23,6 @@
   --radius-sm: calc(var(--radius) - 4px);
 
   --font-sans: Inter, system-ui, sans-serif;
-  --font-mono: JetBrains Mono, monospace;
   --font-display: Space Grotesk, sans-serif;
 
   --animate-fade-in: fadeIn 0.3s ease-out;
@@ -55,6 +54,7 @@
 }
 
 :root {
+  color-scheme: light dark;
   --background: 0 0% 100%;
   --foreground: 222.2 84% 4.9%;
   --muted: 210 40% 96.1%;
@@ -113,5 +113,24 @@ body {
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+}
+
+/* A11Y: clear, consistent focus ring for keyboard users (mouse users unaffected). */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* A11Y: honour "prefers-reduced-motion". Kills CSS animations/transitions as a
+   safety net beneath Framer Motion's reducedMotion="user" in main.tsx. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

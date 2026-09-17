@@ -1,18 +1,18 @@
 "use client";
 
-import { motion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { MapPin, Clock, Shield, Calendar, Star, Sparkles } from "lucide-react";
 import { Fixture } from "@/types/fixture";
 import { getStatusBadge } from "@/lib/api";
 import { formatSydneyTime, formatSydneyDate } from "@/lib/timezone";
 import { Card, CardContent } from "./ui/Card";
 import { cn } from "@/lib/utils";
+import { fadeUp, EASE, DURATION, STAGGER } from "@/lib/motion";
 
 interface FixtureCardProps {
   fixture: Fixture & { is_new?: boolean };
   onToggleFavourite: (fixtureId: number) => void;
   index: number;
-  isFirstMount?: boolean;
   isNew?: boolean;
   onClearNewEvents?: () => void;
   isPast?: boolean;
@@ -25,19 +25,12 @@ const statusIcons = {
   cancelled: Star,
 };
 
-const cardVariants: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.4,
-      ease: [0.25, 0.46, 0.45, 0.94] as const,
-    },
-  },
-};
+// ACCESSIBILITY/PERF: each card animates in once when it scrolls into view
+// (whileInView + viewport once:true) — never replays on re-render. Only
+// opacity/transform are animated, so the work stays on the GPU compositor.
+// Timing/easing come from the shared tokens in lib/motion.ts.
 
-export function FixtureCard({ fixture, onToggleFavourite, index, isFirstMount = true, isNew, onClearNewEvents, isPast }: FixtureCardProps) {
+export function FixtureCard({ fixture, onToggleFavourite, index, isNew, onClearNewEvents, isPast }: FixtureCardProps) {
   const StatusIcon = statusIcons[fixture.status] || Calendar;
   const { label, className: badgeClass } = getStatusBadge(fixture.status);
 
@@ -51,21 +44,26 @@ export function FixtureCard({ fixture, onToggleFavourite, index, isFirstMount = 
 
   return (
     <motion.article
-      variants={cardVariants}
-      initial={isFirstMount ? "hidden" : false}
-      animate="visible"
-      style={{ transitionDelay: `${(index % 10) * 50}ms` }}
+      variants={fadeUp}
+      initial="hidden"
+      whileInView="visible"
+      viewport={{ once: true, amount: 0.15 }}
+      transition={{ duration: DURATION.base, ease: EASE, delay: (index % 10) * STAGGER }}
       className={cn(
-        "relative overflow-hidden transition-all duration-300",
-        "hover:shadow-lg hover:border-primary/20",
+        "relative overflow-hidden",
+        "hover:shadow-lg hover:border-primary/20 transition-[box-shadow,border-color] duration-300",
         fixture.is_favourite && "ring-1 ring-primary/30",
         isNew && "ring-2 ring-primary/50"
       )}
     >
+      {/* A11Y/PERF: each object animates once when it enters the viewport.
+          NOTE: removed the old `transition-all` class — it conflicted with Framer
+          Motion and caused the entrance to play twice (CSS + JS both animating). */}
       {isNew && (
         <motion.div
           initial={{ opacity: 0, scale: 0.5 }}
           animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: DURATION.fast, ease: EASE }}
           className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20"
         >
           <Sparkles className="h-3 w-3" aria-hidden="true" />

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import requests
 from lxml import etree, html
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError
 
 from models import Fixture, db
 

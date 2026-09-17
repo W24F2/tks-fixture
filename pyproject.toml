@@ -1,0 +1,79 @@
+[project]
+name = "tks-fixture"
+version = "1.0.0"
+description = "A modern sports fixture tracking application with automated data ingestion, React frontend, and production-ready Flask backend."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.12"
+authors = [
+    { name = "TKS Fixture Contributors" },
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Web Environment",
+    "Framework :: Flask",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.9",
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "mypy>=1.15",
+]
+loadtest = [
+    "locust>=2.31",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+# ---------------------------------------------------------------------------
+# Ruff — fast Python linter and formatter
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP", "C90"]
+ignore = [
+    "E501",   # line length handled by formatter
+    "B008",   # function call in argument defaults
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "database", "models", "scraper", "scraper_worker"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# ---------------------------------------------------------------------------
+# MyPy — static type checking (lightweight; Flask objects are dynamic)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_redundant_casts = true
+warn_unused_ignitions = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
