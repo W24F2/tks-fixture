@@ -54,6 +54,7 @@ export default defineConfig({
         screenshots: [],
         prefer_related_applications: false,
       },
+      manifestFilename: 'manifest.webmanifest',
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,txt,woff2}'],
         globIgnores: ['**/*.map'],

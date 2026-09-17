@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node -e \"const fs=require('fs'),p='../static/dist';if(!fs.existsSync(p+'/manifest.webmanifest')&&fs.existsSync(p+'/manifest.json'))fs.copyFileSync(p+'/manifest.json',p+'/manifest.webmanifest');\"",
     "lint": "oxlint",
     "typecheck": "tsc -b",
     "preview": "vite preview",
