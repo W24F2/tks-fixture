@@ -114,6 +114,16 @@ def serve_react(path):
     if path.startswith('api/'):
         return jsonify({"error": "Not found"}), 404
 
+    # Serve PWA workbox files from static/dist (Flask catch-all may intercept
+    # before the specific /workbox-<path:filename> route).
+    if path.startswith('workbox-') and path.endswith('.js'):
+        full = os.path.join(app.static_folder, 'dist', path)
+        if os.path.exists(full) and os.path.isfile(full):
+            return send_from_directory(
+                os.path.join(app.static_folder, 'dist'), path,
+                conditional=True, mimetype='application/javascript',
+            )
+
     # Serve static assets directly (Vite emits content-hashed filenames).
     # Hashed assets are immutable: cache for a year and answer 304s via conditional.
     if path.startswith('static/'):
