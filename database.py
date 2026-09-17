@@ -84,4 +84,26 @@ def create_app():
         except (OperationalError, ProgrammingError, SQLAlchemyError) as e:
             print(f"[System] Auto-migration failed: {e}")
 
+        # Auto-create push_subscriptions table if missing
+        try:
+            if not inspector.has_table("push_subscriptions"):
+                print("[System] Creating push_subscriptions table...")
+                db.session.execute(text("""
+                    CREATE TABLE push_subscriptions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        device_id VARCHAR(36) NOT NULL,
+                        endpoint VARCHAR(500) NOT NULL,
+                        p256dh VARCHAR(255) NOT NULL,
+                        auth VARCHAR(255) NOT NULL,
+                        platform VARCHAR(50),
+                        alerts VARCHAR(20) DEFAULT 'all',
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(device_id, endpoint)
+                    )
+                """))
+                db.session.commit()
+        except (OperationalError, ProgrammingError, SQLAlchemyError) as e:
+            print(f"[System] Auto-migration (push_subscriptions) skipped: {e}")
+
     return app

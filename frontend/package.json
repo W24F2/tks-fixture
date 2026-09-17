@@ -8,15 +8,19 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "typecheck": "tsc -b",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pwa": "npx vite-plugin-pwa-devtools"
   },
   "dependencies": {
     "clsx": "^2.1.1",
     "framer-motion": "^13.2.0",
+    "idb": "^8.0.3",
     "lucide-react": "^1.39.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "workbox-core": "^7.3.0",
+    "workbox-window": "^7.3.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
@@ -31,6 +35,12 @@
     "tailwindcss": "^4.3.3",
     "terser": "^5.51.2",
     "typescript": "~6.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vite-plugin-pwa": "^0.21.2",
+    "workbox-precaching": "^7.3.0",
+    "workbox-routing": "^7.3.0",
+    "workbox-strategies": "^7.3.0",
+    "workbox-background-sync": "^7.3.0",
+    "workbox-expiration": "^7.3.0"
   }
 }

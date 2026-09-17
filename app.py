@@ -21,7 +21,7 @@ from flask_limiter.util import get_remote_address
 from sqlalchemy.exc import SQLAlchemyError
 
 from database import create_app
-from models import Favourite, Fixture, db
+from models import Favourite, Fixture, PushSubscription, db
 from scraper import TrumbaScraper
 
 # --- Initialization ---
@@ -195,6 +195,75 @@ def fixtures_hash():
     payload = json.dumps(data, separators=(",", ":"), sort_keys=True)
     etag = hashlib.sha1(payload.encode("utf-8")).hexdigest()
     return jsonify({"hash": etag}), 200
+
+
+# ---- Push notification subscriptions ----
+
+@app.route('/api/push/subscribe', methods=['POST'])
+def push_subscribe():
+    """Register a device for push notifications."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid request"}), 400
+
+        device_id = data.get('device_id')
+        endpoint = data.get('endpoint')
+        p256dh = data.get('p256dh')
+        auth = data.get('auth')
+
+        if not all([device_id, endpoint, p256dh, auth]):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        platform = data.get('platform', 'other')
+        alerts = data.get('alerts', 'all')
+
+        # Upsert: update existing or create new
+        sub = PushSubscription.query.filter_by(
+            device_id=device_id, endpoint=endpoint
+        ).first()
+
+        if sub:
+            sub.p256dh = p256dh
+            sub.auth = auth
+            sub.platform = platform
+            sub.alerts = alerts
+            db.session.commit()
+            return jsonify({"status": "updated", "subscription_id": sub.id}), 200
+
+        new_sub = PushSubscription(
+            device_id=device_id,
+            endpoint=endpoint,
+            p256dh=p256dh,
+            auth=auth,
+            platform=platform,
+            alerts=alerts,
+        )
+        db.session.add(new_sub)
+        db.session.commit()
+        return jsonify({"status": "created", "subscription_id": new_sub.id}), 201
+
+    except (SQLAlchemyError, ValueError) as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/push/subscribe', methods=['DELETE'])
+def push_unsubscribe():
+    """Remove a push subscription."""
+    device_id = request.args.get('device_id')
+    if not device_id:
+        return jsonify({"error": "device_id query param required"}), 400
+
+    try:
+        subs = PushSubscription.query.filter_by(device_id=device_id).all()
+        count = len(subs)
+        PushSubscription.query.filter_by(device_id=device_id).delete()
+        db.session.commit()
+        return jsonify({"status": "deleted", "count": count}), 200
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/favourites/<device_id>', methods=['GET'])

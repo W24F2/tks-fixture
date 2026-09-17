@@ -86,6 +86,33 @@ class Fixture(db.Model):  # type: ignore[name-defined]
             "status": frontend_status
         }
 
+class PushSubscription(db.Model):  # type: ignore[name-defined]
+    __tablename__ = 'push_subscriptions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.String(36), nullable=False)
+    endpoint = db.Column(db.String(500), nullable=False)
+    p256dh = db.Column(db.String(255), nullable=False)
+    auth = db.Column(db.String(255), nullable=False)
+    platform = db.Column(db.String(50))
+    alerts = db.Column(db.String(20), default='all')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint('device_id', 'endpoint', name='uix_device_endpoint'),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "device_id": self.device_id,
+            "endpoint": self.endpoint,
+            "platform": self.platform,
+            "alerts": self.alerts,
+            "created_at": self.created_at.isoformat(),
+        }
+
 class Favourite(db.Model):  # type: ignore[name-defined]
     __tablename__ = 'favourites'
 
