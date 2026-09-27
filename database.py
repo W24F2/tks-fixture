@@ -1,10 +1,32 @@
+import logging
 import os
 
 from flask import Flask
-from sqlalchemy import inspect, text
+from sqlalchemy import event, inspect, text
 from sqlalchemy.exc import OperationalError, ProgrammingError, SQLAlchemyError
 
 from models import db
+
+logger = logging.getLogger(__name__)
+
+
+def _configure_sqlite(engine):
+    """Tune SQLite for multi-process access (gunicorn workers + scraper).
+
+    WAL lets readers proceed while the scraper writes; busy_timeout makes
+    lock contention wait instead of erroring; NORMAL sync is the recommended
+    WAL companion (fast, and cannot corrupt the DB on crash).
+    """
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_connection, _record):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+        finally:
+            cursor.close()
 
 
 def create_app():
@@ -59,6 +81,9 @@ def create_app():
     db.init_app(app)
 
     with app.app_context():
+        if database_url.startswith("sqlite"):
+            _configure_sqlite(db.engine)
+
         db.create_all()
 
         try:
@@ -68,9 +93,8 @@ def create_app():
                 columns = [c["name"] for c in inspector.get_columns("fixtures")]
 
                 if "event_end_time" not in columns:
-                    print(
-                        "[System] Adding missing column "
-                        "'event_end_time' to 'fixtures' table..."
+                    logger.info(
+                        "Adding missing column 'event_end_time' to 'fixtures' table..."
                     )
 
                     db.session.execute(
@@ -82,6 +106,6 @@ def create_app():
                     db.session.commit()
 
         except (OperationalError, ProgrammingError, SQLAlchemyError) as e:
-            print(f"[System] Auto-migration failed: {e}")
+            logger.error("Auto-migration failed: %s", e)
 
     return app

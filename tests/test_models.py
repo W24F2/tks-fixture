@@ -1,6 +1,6 @@
 from datetime import datetime, time, timezone
 
-from models import Favourite, Fixture
+from models import Fixture
 
 
 class TestFixture:
@@ -41,30 +41,3 @@ class TestFixture:
         assert result["title"] == "Test Match"
         assert result["sport"] == "Rugby"
         assert result["status"] in ["upcoming", "live", "completed"]
-
-
-class TestFavourite:
-    def test_favourite_creation(self):
-        fav = Favourite(
-            device_id="device-123",
-            fixture_id=1
-        )
-        
-        assert fav.device_id == "device-123"
-        assert fav.fixture_id == 1
-
-    def test_favourite_to_dict(self):
-        from datetime import datetime, timezone
-        fav = Favourite(
-            id=1,
-            device_id="device-123",
-            fixture_id=42,
-            created_at=datetime.now(timezone.utc)
-        )
-        
-        result = fav.to_dict()
-        
-        assert result["id"] == 1
-        assert result["device_id"] == "device-123"
-        assert result["fixture_id"] == 42
-        assert "created_at" in result

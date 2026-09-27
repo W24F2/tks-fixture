@@ -42,7 +42,7 @@
     <meta property="og:title" content="Sports Fixtures &amp; Schedules">
     <meta property="og:description" content="Live and upcoming school sports fixtures, results and schedules.">
     <meta property="og:locale" content="en_AU">
-    <meta property="og:url" content="{{ request.url_root }}">
+    <meta property="og:url" content="{{ request.url_root.rstrip('/') + '/' if request.url_root else request.url_root }}">
 
     <!-- SEO: Twitter Card -->
     <meta name="twitter:card" content="summary">
@@ -58,7 +58,7 @@
       "@context": "https://schema.org",
       "@type": "WebSite",
       "name": "Sports Fixtures",
-      "url": "{{ request.url_root }}",
+      "url": "{{ request.url_root.rstrip('/') + '/' if request.url_root else request.url_root }}",
       "description": "Live and upcoming school sports fixtures, results and schedules.",
       "inLanguage": "en-AU"
     }

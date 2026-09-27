@@ -1,107 +1,55 @@
-const CACHE_NAME = 'sports-fetcher-cache-v3';
-const API_CACHE_NAME = 'sports-fetcher-api-v3';
-const STATIC_ASSETS = [
-  '/',
-  '/static/style.css',
-  '/static/app.js',
-  '/static/manifest.json',
-  '/static/FS.svg',
-  '/static/FS.png'
-];
+const API_CACHE_NAME = 'sports-fetcher-api-v1';
+const STATIC_CACHE_NAME = 'sports-fetcher-static-v1';
+// Precaching is removed — assets are hash-based and served immutable.
+// Runtime caching stays for offline resilience.
 
-// Install event - cache static assets
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Installing static assets');
-      return cache.addAll(STATIC_ASSETS);
-    }).then(() => self.skipWaiting())
-  );
-});
-
-// Activate event - clean old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME && cache !== API_CACHE_NAME) {
-            console.log(`[SW] Deleting old cache: ${cache}`);
-            return caches.delete(cache);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches.keys().then((names) =>
+      Promise.all(
+        names
+          .filter((n) => n !== API_CACHE_NAME && n !== STATIC_CACHE_NAME)
+          .map((n) => caches.delete(n))
+      )
+    ).then(() => self.clients.claim())
   );
 });
 
-// Fetch event - Stale-While-Revalidate for API, Cache First for static
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') {
-    return;
-  }
-  
-  // Skip cross-origin requests
-  if (url.origin !== location.origin) {
-    return;
-  }
+  if (event.request.method !== 'GET' || url.origin !== location.origin) return;
 
-  // API requests: Stale-While-Revalidate
   if (url.pathname.startsWith('/api/')) {
+    // Stale-while-revalidate for API
     event.respondWith(
-      caches.open(API_CACHE_NAME).then((cache) => {
-        return cache.match(event.request).then((cachedResponse) => {
-          const fetchPromise = fetch(event.request).then((networkResponse) => {
-            // Only cache successful responses
-            if (networkResponse.ok) {
-              cache.put(event.request, networkResponse.clone());
-            }
-            return networkResponse;
-          }).catch(() => {
-            // Network failed, return cached if available
-            return cachedResponse;
-          });
-          
-          // Return cached immediately, update in background
-          return cachedResponse || fetchPromise;
-        });
-      })
+      caches.open(API_CACHE_NAME).then((cache) =>
+        cache.match(event.request).then((cached) => {
+          const network = fetch(event.request)
+            .then((resp) => {
+              if (resp.ok) cache.put(event.request, resp.clone());
+              return resp;
+            })
+            .catch(() => cached);
+          return cached || network;
+        })
+      )
     );
     return;
   }
 
-  // Static assets: Cache First
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      if (response) {
-        return response;
-      }
-      
-      return fetch(event.request).then((networkResponse) => {
-        // Cache successful responses
-        if (networkResponse.ok) {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
+  // Immutable static assets: cache-first
+  if (url.pathname.startsWith('/static/')) {
+    event.respondWith(
+      caches.open(STATIC_CACHE_NAME).then((cache) =>
+        cache.match(event.request).then((cached) => {
+          if (cached) return cached;
+          return fetch(event.request).then((resp) => {
+            if (resp.ok) cache.put(event.request, resp.clone());
+            return resp;
           });
-        }
-        return networkResponse;
-      });
-    })
-  );
-});
-
-// Background sync for offline favourites (if needed in future)
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-favourites') {
-    event.waitUntil(syncFavourites());
+        })
+      )
+    );
+    return;
   }
 });
-
-async function syncFavourites() {
-  // Placeholder for future offline favourite sync
-  console.log('[SW] Background sync triggered');
-}

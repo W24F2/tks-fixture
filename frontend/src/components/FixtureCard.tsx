@@ -1,5 +1,6 @@
 "use client";
 
+import { memo, useMemo } from "react";
 import { motion } from "framer-motion";
 import { MapPin, Clock, Shield, Calendar, Star, Sparkles } from "lucide-react";
 import { Fixture } from "@/types/fixture";
@@ -30,7 +31,7 @@ const statusIcons = {
 // opacity/transform are animated, so the work stays on the GPU compositor.
 // Timing/easing come from the shared tokens in lib/motion.ts.
 
-export function FixtureCard({ fixture, onToggleFavourite, index, isNew, onClearNewEvents, isPast }: FixtureCardProps) {
+function FixtureCardInner({ fixture, onToggleFavourite, index, isNew, onClearNewEvents }: FixtureCardProps) {
   const StatusIcon = statusIcons[fixture.status] || Calendar;
   const { label, className: badgeClass } = getStatusBadge(fixture.status);
 
@@ -149,7 +150,7 @@ export function FixtureCard({ fixture, onToggleFavourite, index, isNew, onClearN
                   <Star className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
                 )}
                 {fixture.is_favourite && (
-                  <span className="absolute inset-0 flex items-center justify-center pointer-events-none animate-ping">
+                  <span className="absolute inset-0 flex items-center justify-center pointer-events-none favourite-pulse">
                     <Star className="h-6 w-6 fill-yellow-400/30 text-yellow-400/30" aria-hidden="true" />
                   </span>
                 )}
@@ -167,3 +168,16 @@ export function FixtureCard({ fixture, onToggleFavourite, index, isNew, onClearN
     </motion.article>
   );
 }
+
+export const FixtureCard = memo(FixtureCardInner, (prev, next) => {
+  // Treat `index` as an artifact of list rendering; it triggers entrance
+  // stagger once, so changes to it don't need a remount.
+  return (
+    prev.fixture.id === next.fixture.id &&
+    prev.fixture.is_favourite === next.fixture.is_favourite &&
+    prev.fixture.status === next.fixture.status &&
+    prev.fixture.is_new === next.fixture.is_new &&
+    prev.isNew === next.isNew &&
+    prev.onClearNewEvents === next.onClearNewEvents
+  );
+});

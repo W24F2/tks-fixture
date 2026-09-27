@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef, useDeferredValue } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useDeferredValue, Suspense } from "react";
+import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Header, type Filter } from "./components/Header";
 import { FixtureList } from "./components/FixtureList";
 import { LoadingScreen } from "./components/LoadingScreen";
-import { LegalNotice, type LegalMode } from "./components/LegalNotice";
 import { acceptTerms, hasAcceptedCurrentTerms } from "./lib/consent";
 import type { Fixture, FixtureGroup } from "@/types/fixture";
-import { api, groupFixturesByDate, clearCache, groupFixturesWithFavouritesFirst } from "./lib/api";
-import { getFavourites, toggleFavourite, isFavourite } from "./lib/favourites";
-import { getFixtureStatusInSydney, formatSydneyTime, formatSydneyDate, isPastDate } from "./lib/timezone";
+import { api, groupFixturesByDate, groupFixturesWithFavouritesFirst } from "./lib/api";
+import { getFavourites, toggleFavourite } from "./lib/favourites";
+import { getSydneyNow, getFixtureStatusInSydney, formatSydneyTime, formatSydneyDate, isPastDate } from "./lib/timezone";
+import { LegalNotice, type LegalMode } from "./components/LegalNotice";
 import { fadeUp, fadeIn, EASE, EASE_IN_OUT, DURATION } from "@/lib/motion";
 import { Card, CardContent } from "./components/ui/Card";
 import { Button } from "./components/ui/Button";
@@ -40,10 +41,9 @@ export default function App() {
   const [legalMode, setLegalMode] = useState<LegalMode>("gate");
 
   const [favouriteIds, setFavouriteIds] = useState<Set<number>>(() => new Set(getFavourites()));
-  
+
   const refreshFavourites = useCallback(() => {
     setFavouriteIds(new Set(getFavourites()));
-    setFixtures(prev => [...prev]);
   }, []);
   
   useEffect(() => {
@@ -68,27 +68,28 @@ export default function App() {
   }, []);
 
   const mergedFixtures = useMemo(() => {
-    const now = new Date();
+    const now = getSydneyNow();
     return fixtures
       .map((fixture) => {
-        const status = getFixtureStatusInSydney(fixture);
+        const status = getFixtureStatusInSydney(fixture, now);
         const isFav = favouriteIds.has(fixture.id);
         const isNew = newEvents.has(fixture.id);
+        const dateTs = Date.parse(fixture.event_date + 'T' + (fixture.event_time || '00:00'));
         return {
           ...fixture,
           is_favourite: isFav,
           status,
           is_new: isNew,
+          __sortKey: dateTs,
         };
       })
       .sort((a, b) => {
         if (a.is_favourite !== b.is_favourite) {
           return a.is_favourite ? -1 : 1;
         }
-        const dateA = new Date(a.event_date + "T" + (a.event_time || "00:00")).getTime();
-        const dateB = new Date(b.event_date + "T" + (b.event_time || "00:00")).getTime();
-        return dateA - dateB;
-      });
+        return a.__sortKey - b.__sortKey;
+      })
+      .map(({ __sortKey, ...rest }) => rest);
   }, [fixtures, favouriteIds, newEvents]);
 
   const loadData = useCallback(async () => {
@@ -174,14 +175,25 @@ export default function App() {
   const groups = useMemo(() => groupFixturesWithFavouritesFirst(filteredFixtures), [filteredFixtures]);
 
   const pastGroups = useMemo(() => {
+    if (filter !== "all") return [];
     const pastFixtures = mergedFixtures.filter(f => isPastDate(f.event_date) && f.status === 'completed');
     return groupFixturesByDate(pastFixtures).reverse();
+  }, [mergedFixtures, filter]);
+
+  const counts = useMemo(() => {
+    let upcoming = 0, live = 0, completed = 0;
+    for (const f of mergedFixtures) {
+      if (f.status === "upcoming") upcoming++;
+      else if (f.status === "live") live++;
+      else if (f.status === "completed") completed++;
+    }
+    return { upcoming, live, completed };
   }, [mergedFixtures]);
 
-  const upcomingCount = useMemo(() => mergedFixtures.filter((f) => f.status === "upcoming").length, [mergedFixtures]);
-  const liveCount = useMemo(() => mergedFixtures.filter((f) => f.status === "live").length, [mergedFixtures]);
+  const upcomingCount = counts.upcoming;
+  const liveCount = counts.live;
   // pastCount is shown in the "Past Matches" collapsible label (All view only).
-  const pastCount = useMemo(() => mergedFixtures.filter((f) => f.status === "completed").length, [mergedFixtures]);
+  const pastCount = counts.completed;
   const favouriteCount = favouriteIds.size;
 
   // PERF: search filters within the active tab (no reset to "all") — keeps the
@@ -461,12 +473,14 @@ export default function App() {
     </div>
 
       {/* LEGAL: first-visit consent gate (and footer-triggered review). */}
-      <LegalNotice
-        open={legalOpen}
-        mode={legalMode}
-        onAccept={handleAcceptTerms}
-        onClose={closeLegalNotice}
-      />
+      <React.Suspense fallback={null}>
+        <LegalNotice
+          open={legalOpen}
+          mode={legalMode}
+          onAccept={handleAcceptTerms}
+          onClose={closeLegalNotice}
+        />
+      </React.Suspense>
     </>
   );
 }

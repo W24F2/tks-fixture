@@ -3,6 +3,9 @@ import os
 import re
 from datetime import datetime, timezone
 
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+
 import requests
 from lxml import etree, html
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -11,6 +14,16 @@ from models import Fixture, db
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+
+def _session_with_retries():
+    """Create a requests Session with sensible retry policy for Trumba feed."""
+    session = requests.Session()
+    retries = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504], allowed_methods=["GET"])
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 
 class TrumbaScraper:
     def __init__(self, url=None):
@@ -180,100 +193,97 @@ class TrumbaScraper:
 
     def scrape(self):
         logger.info(f"Starting scrape from {self.url}...")
+        session = _session_with_retries()
         try:
-            response = requests.get(self.url, timeout=30)
+            # Hardened XML parser: no external entities, network off.
+            response = session.get(self.url, timeout=30)
             response.raise_for_status()
         except Exception as e:
             logger.error(f"Request failed: {e}")
             raise
 
-        root = etree.fromstring(response.content)
+        parser = etree.XMLParser(resolve_entities=False, no_network=True)
+        root = etree.fromstring(response.content, parser=parser)
         entries = root.xpath('//atom:entry', namespaces=self.ns)
         logger.info(f"Found {len(entries)} entries in XML.")
 
         new_count = 0
         updated_count = 0
 
+        # Bulk-load existing external_ids to avoid N SELECTs inside the loop.
+        entry_ids = []
+        entries_payload = []  # keep parsed data to bulk upsert later
         for entry in entries:
-            external_id = None
-            try:
-                ext_id_list = entry.xpath('atom:id/text()', namespaces=self.ns)
-                if not ext_id_list: continue
-                external_id = ext_id_list[0]
-
-                title_list = entry.xpath('atom:title/text()', namespaces=self.ns)
-                if not title_list: continue
-                title = title_list[0]
-
-                content_list = entry.xpath('atom:content/text()', namespaces=self.ns)
-                if not content_list: continue
-                content_html = content_list[0]
-
-                dt_res = self._parse_date_time(content_html)
-                if not dt_res:
-                    logger.warning(f"Skipping entry {external_id}: Date parse failed")
-                    continue
-
-                start_dt, end_dt = dt_res
-
-                metadata = self._extract_metadata(content_html)
-
-                try:
-                    with db.session.begin_nested():
-                        fixture = Fixture.query.filter_by(external_id=external_id).first()
-
-                        if fixture:
-                            fixture.title = title
-                            fixture.location = metadata["location"]
-                            fixture.event_date = start_dt
-                            fixture.event_time = start_dt.time()
-                            if end_dt:
-                                fixture.event_end_time = end_dt.time()
-                            fixture.sport = metadata["sport"]
-                            fixture.opposition = metadata["opposition"]
-                            fixture.team = metadata["team"]
-                            fixture.raw_content = content_html
-                            fixture.last_updated = datetime.now(timezone.utc)
-                            updated_count += 1
-                        else:
-                            new_fixture = Fixture(
-                                external_id=external_id,
-                                title=title,
-                                location=metadata["location"],
-                                event_date=start_dt,
-                                event_time=start_dt.time(),
-                                event_end_time=end_dt.time() if end_dt else None,
-                                sport=metadata["sport"],
-                                opposition=metadata["opposition"],
-                                team=metadata["team"],
-                                raw_content=content_html
-                            )
-                            db.session.add(new_fixture)
-                            new_count += 1
-                except IntegrityError:
-                    db.session.rollback()
-                    logger.info(f"Race condition: Entry {external_id} was inserted concurrently. Retrying as update.")
-                    # Retry as update
-                    fixture = Fixture.query.filter_by(external_id=external_id).first()
-                    if fixture:
-                        fixture.title = title
-                        fixture.location = metadata["location"]
-                        fixture.event_date = start_dt
-                        fixture.event_time = start_dt.time()
-                        if end_dt:
-                            fixture.event_end_time = end_dt.time()
-                        fixture.sport = metadata["sport"]
-                        fixture.opposition = metadata["opposition"]
-                        fixture.team = metadata["team"]
-                        fixture.raw_content = content_html
-                        fixture.last_updated = datetime.now(timezone.utc)
-                        updated_count += 1
-                    else:
-                        logger.error(f"Failed to retry update for {external_id} after IntegrityError")
-
-            except (SQLAlchemyError, ValueError, KeyError) as e:
-                logger.error(f"Error processing entry {external_id if external_id else 'unknown'}: {e}")
+            ext_id_list = entry.xpath('atom:id/text()', namespaces=self.ns)
+            if not ext_id_list:
                 continue
+            external_id = ext_id_list[0]
+
+            title_list = entry.xpath('atom:title/text()', namespaces=self.ns)
+            if not title_list:
+                continue
+            title = title_list[0]
+
+            content_list = entry.xpath('atom:content/text()', namespaces=self.ns)
+            if not content_list:
+                continue
+            content_html = content_list[0]
+
+            dt_res = self._parse_date_time(content_html)
+            if not dt_res:
+                logger.warning(f"Skipping entry {external_id}: Date parse failed")
+                continue
+
+            start_dt, end_dt = dt_res
+            metadata = self._extract_metadata(content_html)
+
+            entries_payload.append({
+                "external_id": external_id,
+                "title": title,
+                "location": metadata.get("location"),
+                "event_date": start_dt,
+                "event_time": start_dt.time() if start_dt else None,
+                "event_end_time": end_dt.time() if end_dt else None,
+                "sport": metadata.get("sport"),
+                "opposition": metadata.get("opposition"),
+                "team": metadata.get("team"),
+                "raw_content": content_html,
+            })
+            entry_ids.append(external_id)
+
+        # One query to locate existing fixtures; avoids N+1 selects.
+        existing = {
+            f.external_id: f
+            for f in Fixture.query.filter(Fixture.external_id.in_(entry_ids)).all()
+        }
+
+        # Bulk apply via ORM session. Using a single transaction keeps
+        # ordering & timestamps predictable, and SQLAlchemy will coalesce
+        # the writes into a single flush/commit at the end.
+        for payload in entries_payload:
+            ext_id = payload["external_id"]
+            if ext_id in existing:
+                fixture = existing[ext_id]
+                # Update only dirty fields — reduces SQL UPDATE traffic.
+                fixture.title = payload["title"]
+                fixture.location = payload["location"]
+                fixture.event_date = payload["event_date"]
+                fixture.event_time = payload["event_time"]
+                fixture.event_end_time = payload["event_end_time"]
+                fixture.sport = payload["sport"]
+                fixture.opposition = payload["opposition"]
+                fixture.team = payload["team"]
+                fixture.raw_content = payload["raw_content"]
+                # `last_updated` auto-updates via column default
+                updated_count += 1
+            else:
+                fixture = Fixture(**payload)
+                db.session.add(fixture)
+                new_count += 1
+
+        db.session.commit()
+        logger.info(f"Scrape complete. New: {new_count}, Updated: {updated_count}")
+        return new_count, updated_count
 
         db.session.commit()
         logger.info(f"Scrape complete. New: {new_count}, Updated: {updated_count}")

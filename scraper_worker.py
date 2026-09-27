@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
-from app import create_app
+from database import create_app
 from models import Fixture  # Import model to check DB state
 from scraper import TrumbaScraper
 

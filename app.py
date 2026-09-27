@@ -1,8 +1,10 @@
 import hashlib
 import json
+import logging
 import os
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 
 import requests
 from dotenv import load_dotenv
@@ -14,44 +16,46 @@ from flask import (
     request,
     send_from_directory,
 )
-from flask_caching import Cache
 from flask_compress import Compress
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from database import create_app
-from models import Favourite, Fixture, db
+from models import SYDNEY_TZ, Fixture, db
 from scraper import TrumbaScraper
 
 # --- Initialization ---
+
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env for local development
 load_dotenv()
 
 app = create_app()
 
-# Vite manifest for cache-busted assets
+# Vite manifest for cache-busted assets. Re-reading it from disk on every
+# request is wasteful — cache it and invalidate on mtime change (rebuild/deploy).
+_vite_manifest_cache: dict = {"mtime": None, "manifest": {}}
+
+
 def load_vite_manifest():
     manifest_path = os.path.join(app.static_folder, 'dist', '.vite', 'manifest.json')
-    if os.path.exists(manifest_path):
+    try:
+        mtime = os.path.getmtime(manifest_path)
+    except OSError:
+        return {}
+    if _vite_manifest_cache["mtime"] != mtime:
         with open(manifest_path) as f:
-            return json.load(f)
-    return {}
+            manifest = json.load(f)
+        _vite_manifest_cache["mtime"] = mtime
+        _vite_manifest_cache["manifest"] = manifest
+    return _vite_manifest_cache["manifest"]
 
 @app.context_processor
 def inject_vite_assets():
     return {"vite_manifest": load_vite_manifest()}
-
-# Cache configuration (Redis for production, SimpleCache for dev)
-cache_config = {
-    "CACHE_TYPE": "RedisCache" if os.getenv("REDIS_URL") else "SimpleCache",
-    "CACHE_DEFAULT_TIMEOUT": 60,
-}
-if os.getenv("REDIS_URL"):
-    cache_config["CACHE_REDIS_URL"] = os.getenv("REDIS_URL")  # type: ignore[assignment]
-
-cache = Cache(app, config=cache_config)
 
 # Response compression — prefer Brotli, fall back to gzip.
 # Brotli yields ~15-20% smaller payloads than gzip for JSON/HTML/JS/CSS.
@@ -60,12 +64,15 @@ app.config["COMPRESS_BR_LEVEL"] = 6  # balance speed vs ratio
 app.config["COMPRESS_MIN_SIZE"] = 500  # skip tiny responses
 Compress(app)
 
-# Rate limiting setup (Redis for production, memory for dev)
+# Rate limiting setup (Redis for production, memory for dev).
+# NOTE: a single page load burns several requests (HTML + JS + CSS + API +
+# favicon), and school networks share NAT IPs — the daily allowance must be
+# generous enough for that.
 limiter_storage = os.getenv("REDIS_URL") or "memory://"
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["200 per day", "50 per minute"],
+    default_limits=["2000 per day", "50 per minute"],
     storage_uri=limiter_storage
 )
 
@@ -78,13 +85,23 @@ TRUMBA_XML_URL = os.getenv('TRUMBA_XML_URL')
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_react(path):
-    """Serve React SPA for all non-API routes."""
+    """Serve React SPA for all non-API routes.
+
+    SECURITY: return proper 404 for obviously dangerous/inspect paths,
+    instead of serving the SPA for everything. Unknown SPA client-side routes
+    still fall through to the SPA.
+    """
     # Let API routes handle themselves
     if path.startswith('api/'):
         return jsonify({"error": "Not found"}), 404
 
-    # Serve static assets directly (Vite emits content-hashed filenames).
-    # Hashed assets are immutable: cache for a year and answer 304s via conditional.
+    # Block hidden/secret paths early — do not leak SPA HTML for them.
+    insecure_prefixes = (
+        '.git', '.env', '.well-known', '.aws', '.ssh',
+        'admin', 'config', 'secrets', 'phpmyadmin', '.htaccess',
+    )
+    if any(str(path).split('/')[0].lower().startswith(p) for p in insecure_prefixes):
+        return jsonify({"error": "Not found"}), 404
     if path.startswith('static/'):
         rel = path[7:]
         full = os.path.join(app.static_folder, rel)
@@ -103,26 +120,46 @@ def serve_react(path):
 
     # SPA entry — must NOT be cached so new deploys are picked up immediately.
     resp = make_response(render_template('spa.html'))
-    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return resp
 
 
-# --- Defensive headers on every response (security + SEO) ---
+# Defensive headers on every response (security + SEO).
+# Per OWASP, we remove X-XSS-Protection (deprecated) and add CSP, HSTS,
+# Permissions Policy, and a more precise Vary handling.
 @app.after_request
 def add_security_headers(resp):
-    """SECURITY/SEO: attach defensive headers to all responses."""
     # Stop MIME sniffing (defeats polyglot/upload attacks).
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     # Disallow framing by other origins (clickjacking protection).
     resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     # Limit referrer leakage to same-origin/trusted.
     resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    # Legacy XSS auditor hint (harmless on modern browsers).
-    resp.headers.setdefault("X-XSS-Protection", "1; mode=block")
     # Declare content language for better a11y/SEO.
     resp.headers.setdefault("Content-Language", "en-AU")
+    # Permissions-Policy: restrict unnecessary browser features.
+    resp.headers.setdefault(
+        "Permissions-Policy",
+        "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
+    )
+    # HSTS: force HTTPS for 1 year, include subdomains, preload-ready.
+    # NOTE: ensure the domain is permanently HTTPS before enabling preload.
+    if request.scheme == "https":
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+
+    # Content-Security-Policy: strict default-src, allow self-origin scripts/styles,
+    # Google Fonts, and Vite inline module preload.
+    resp.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
+    )
+
     # Ensure negotiated (gzip/brotli) and ETag responses aren't wrongly shared.
-    resp.headers["Vary"] = "Accept-Encoding, If-None-Match"
+    vary = {"Accept-Encoding", "If-None-Match"}
+    existing = resp.headers.get("Vary")
+    if existing:
+        vary.update(v.strip() for v in existing.split(",") if v.strip())
+    resp.headers["Vary"] = ", ".join(sorted(vary))
     return resp
 
 
@@ -153,22 +190,43 @@ def sitemap_xml():
 
 # --- API Routes ---
 
+# PERF: serializing every fixture (incl. per-row status math) is the most
+# expensive work this app does per request — and 304 revalidations used to pay
+# it in full too. The serialized payload only changes when the table changes
+# (COUNT + MAX(last_updated)) or when a status boundary passes, so we memoize
+# (payload, etag) on that key. last_updated has onupdate=utcnow, so any row
+# change bumps the key automatically — no manual invalidation needed.
+_FIXTURES_CACHE: dict = {"key": None, "payload": "", "etag": ""}
+
+
 @app.route('/api/fixtures')
 def get_fixtures():
     """API endpoint to get fixtures in JSON format.
 
-    PERF: content-based ETag + HTTP 304.
+    PERF: content-based ETag + HTTP 304 + payload memoization.
     The frontend (api.ts) sends If-None-Match on every poll. When the fixture
-    set is unchanged we reply 304 with an empty body instead of re-sending the
-    full JSON payload. This finally delivers the "stale-while-revalidate"
-    behaviour the README promises but the old @cache.cached decorator never did.
+    set is unchanged we reply 304 with an empty body; when only the minute
+    bucket advanced we re-serialize but skip nothing else visible to clients.
     """
-    fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
-    data = [f.to_dict() for f in fixtures]
+    row = db.session.execute(
+        select(func.count(Fixture.id), func.max(Fixture.last_updated))
+    ).one()
+    # Statuses are wall-clock dependent, so the minute bucket is part of the key.
+    version_key = (row[0], row[1], int(time.time() // 60))
 
-    # Stable, order-independent fingerprint of the payload.
-    payload = json.dumps(data, separators=(",", ":"), sort_keys=True)
-    etag = hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    if _FIXTURES_CACHE["key"] != version_key:
+        fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
+        now = datetime.now(SYDNEY_TZ)
+        data = [f.to_dict(now=now) for f in fixtures]
+
+        # Stable, order-independent fingerprint of the payload. The same string
+        # doubles as the 200 response body — jsonify would serialize it again.
+        payload = json.dumps(data, separators=(",", ":"), sort_keys=True)
+        _FIXTURES_CACHE["key"] = version_key
+        _FIXTURES_CACHE["payload"] = payload
+        _FIXTURES_CACHE["etag"] = hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+    etag = _FIXTURES_CACHE["etag"]
 
     # 304: client already has this exact version -> save bandwidth.
     if request.headers.get("If-None-Match") == etag:
@@ -177,74 +235,34 @@ def get_fixtures():
             headers={"ETag": etag, "Cache-Control": "public, max-age=30"},
         )
 
-    resp = jsonify(data)
+    resp = Response(_FIXTURES_CACHE["payload"], mimetype="application/json")
     resp.headers["ETag"] = etag
     resp.headers["Cache-Control"] = "public, max-age=30"
     return resp
 
 
-@app.route('/api/favourites/<device_id>', methods=['GET'])
-def get_favourites(device_id):
-    """Fetch all favourites for a device."""
-    favourites = Favourite.query.filter_by(device_id=device_id).all()
-    return jsonify([f.to_dict() for f in favourites])
-
-
-@app.route('/api/favourites', methods=['POST'])
-def add_favourite():
-    """Add a fixture to favourites for a device."""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Invalid request"}), 400
-
-        device_id = data.get('device_id')
-        fixture_id = data.get('fixture_id')
-
-        if not device_id or not fixture_id:
-            return jsonify({"error": "device_id and fixture_id are required"}), 400
-
-        # Check if already favourited
-        favourite = Favourite.query.filter_by(device_id=device_id, fixture_id=fixture_id).first()
-
-        if favourite:
-            # Already favourited, return existing
-            return jsonify(favourite.to_dict()), 200
-
-        # Add to favourites
-        new_favourite = Favourite(device_id=device_id, fixture_id=fixture_id)
-        db.session.add(new_favourite)
-        db.session.commit()
-        # Return full favourite object with fixture data
-        return jsonify(new_favourite.to_dict()), 201
-
-    except (SQLAlchemyError, ValueError, KeyError) as e:
-        db.session.rollback()
-        err_msg = str(e).lower()
-        if 'unique constraint failed' in err_msg or 'duplicate key value' in err_msg or 'integrity error' in err_msg:
-            return jsonify({"status": "already_exists"}), 200
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/api/favourites/<device_id>/<int:fixture_id>', methods=['DELETE'])
-def delete_favourite(device_id, fixture_id):
-    """Remove a fixture from favourites for a device."""
-    try:
-        favourite = Favourite.query.filter_by(device_id=device_id, fixture_id=fixture_id).first()
-        if not favourite:
-            return jsonify({"error": "Favourite not found"}), 404
-
-        db.session.delete(favourite)
-        db.session.commit()
-
-        return jsonify({"status": "success"}), 200
-    except (SQLAlchemyError, ValueError) as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-
-
 # Module-level guard so a burst of refresh clicks can't hammer the upstream feed.
+# Fast path only: the authoritative cross-process check is DB-based (below),
+# because a module global is per-Gunicorn-worker.
 _LAST_REFRESH = 0.0
+REFRESH_COOLDOWN = 60  # seconds
+
+
+def _fixtures_freshly_written():
+    """True if any fixture row was written within REFRESH_COOLDOWN seconds.
+
+    Unlike the module-level `_LAST_REFRESH` guard this holds across all
+    Gunicorn workers, since every worker sees the same table. It misses the
+    rare "scrape ran but changed nothing" case — the module guard covers that
+    within a single worker, which bounds the worst case fine.
+    """
+    latest = db.session.query(func.max(Fixture.last_updated)).scalar()
+    if latest is None:
+        return False
+    if latest.tzinfo is None:
+        latest = latest.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - latest < timedelta(seconds=REFRESH_COOLDOWN)
+
 
 @app.route('/api/fixtures/refresh', methods=['POST'])
 def refresh_fixtures():
@@ -252,12 +270,12 @@ def refresh_fixtures():
 
     SECURITY/PERF: a debounce guard prevents clients from abusing this endpoint
     to DDoS the external Trumba XML feed. If a scrape happened within
-    REFRESH_COOLDOWN seconds we skip the (expensive) network call and just tell
-    the client the data is current — the scheduled worker still refreshes on time.
+    REFRESH_COOLDOWN seconds (any worker) we skip the (expensive) network call
+    and just tell the client the data is current — the scheduled worker still
+    refreshes on time.
     """
     global _LAST_REFRESH
-    REFRESH_COOLDOWN = 60  # seconds
-    if time.monotonic() - _LAST_REFRESH < REFRESH_COOLDOWN:
+    if time.monotonic() - _LAST_REFRESH < REFRESH_COOLDOWN or _fixtures_freshly_written():
         return jsonify({"message": "Data is up to date"}), 200
 
     try:
@@ -278,8 +296,13 @@ def refresh_fixtures():
 
 @app.route('/api/health')
 def health_check():
-    """Health check endpoint for monitoring."""
-    return jsonify({"status": "healthy"}), 200
+    """Health check endpoint for monitoring — verifies DB connectivity."""
+    try:
+        db.session.execute(text("SELECT 1"))
+        return jsonify({"status": "healthy"}), 200
+    except SQLAlchemyError as e:
+        logger.error("Health check DB ping failed: %s", e)
+        return jsonify({"status": "unhealthy"}), 503
 
 
 # --- Custom Error Handlers ---
@@ -302,6 +325,7 @@ def ratelimit_handler(e):
 
 # --- Local Execution Entry Point ---
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     print("\n===============================================================")
     print("!!! WARNING !!! Running this file directly is only for local development.")
     print("For production, use Gunicorn with gunicorn.conf.py")
@@ -313,12 +337,12 @@ if __name__ == "__main__":
         from scraper_worker import run_scheduled_scrape
         fixture_count = Fixture.query.count()
         if fixture_count == 0:
-            print("[System] No fixtures found, fetching from XML...")
+            logger.info("No fixtures found, fetching from XML...")
             try:
                 count = run_scheduled_scrape()
-                print(f"[System] Scraped {count} fixtures from XML")
+                logger.info("Scraped %s fixtures from XML", count)
             except Exception as e:
-                print(f"[System] Initial scrape failed: {e}")
+                logger.error("Initial scrape failed: %s", e)
 
     # Start the background scraper thread ONLY when running locally
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not os.environ.get('FLASK_DEBUG'):
@@ -326,9 +350,9 @@ if __name__ == "__main__":
         if is_scheduled_time():
             scraper_thread = threading.Thread(target=lambda: run_scheduled_scrape() or None, daemon=True)
             scraper_thread.start()
-            print("[System] Background scraper thread started (respects schedule).")
+            logger.info("Background scraper thread started (respects schedule).")
         else:
-            print("[System] Outside scheduled hours - scraper not started.")
+            logger.info("Outside scheduled hours - scraper not started.")
 
     # Run the web application using a dedicated port for local testing
     app.run(debug=True, port=5001)

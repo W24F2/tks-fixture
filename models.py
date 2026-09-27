@@ -1,13 +1,24 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
+logger = logging.getLogger(__name__)
+
 try:
     import zoneinfo
 except (KeyError, OSError):
     from backports import zoneinfo  # type: ignore[attr-defined,no-redef,import-untyped]
+
+# PERF: ZoneInfo construction reads the tz database from disk — build it once
+# at import time instead of per row (to_dict used to do it per fixture per
+# request, which dominated /api/fixtures latency on large tables).
+try:
+    SYDNEY_TZ = zoneinfo.ZoneInfo("Australia/Sydney")
+except (KeyError, OSError):
+    SYDNEY_TZ = timezone.utc
 
 class Fixture(db.Model):  # type: ignore[name-defined]
     __tablename__ = 'fixtures'
@@ -27,17 +38,18 @@ class Fixture(db.Model):  # type: ignore[name-defined]
 
     __table_args__ = ()
 
-    def to_dict(self):
+    def to_dict(self, now=None):
+        """Serialize the fixture, computing its live/upcoming/completed status.
+
+        `now` (Sydney-aware datetime) may be supplied by the caller so a whole
+        list can share one "current time" instead of per-row clock reads.
+        """
         # Determine status based on current time in Sydney
         status = "Scheduled"
         if self.event_date:
-            try:
-                sydney_tz = zoneinfo.ZoneInfo("Australia/Sydney")
-            except (KeyError, OSError):
-                # Fallback if zoneinfo fails
-                sydney_tz = timezone.utc
-
-            now = datetime.now(sydney_tz)
+            sydney_tz = SYDNEY_TZ
+            if now is None:
+                now = datetime.now(sydney_tz)
 
             # Combine date and time for comparison
             # We assume the event_date/time stored in DB are in Sydney time
@@ -60,7 +72,7 @@ class Fixture(db.Model):  # type: ignore[name-defined]
                 else:
                     status = "Finished"
             except (ValueError, AttributeError) as e:
-                print(f"[Error] Status calculation failed: {e}")
+                logger.warning("Status calculation failed for fixture %s: %s", self.id, e)
                 status = "Scheduled"
 
         # Map backend status to frontend expected values
