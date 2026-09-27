@@ -8,6 +8,9 @@ __pycache__/
 *$py.class
 venv/
 env/
+*.egg-info/
+dist/
+build/
 
 # Database
 *.db
@@ -17,10 +20,12 @@ sports_fixtures.db
 # IDEs
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
 
 # Node / Frontend
 frontend/node_modules/
-# frontend/package-lock.json  # commit for CI npm ci
 frontend/dist/
 
 # Root-level node tooling (Renovate bot dependency tree) — not app code.

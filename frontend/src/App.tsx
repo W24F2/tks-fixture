@@ -1,21 +1,28 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef, useDeferredValue, Suspense } from "react";
-import * as React from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useDeferredValue } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Header, type Filter } from "./components/Header";
 import { FixtureList } from "./components/FixtureList";
 import { LoadingScreen } from "./components/LoadingScreen";
+import { LegalNotice, type LegalMode } from "./components/LegalNotice";
+import { InstallPrompt } from "./components/InstallPrompt";
+import { OfflineIndicator } from "./components/OfflineIndicator";
 import { acceptTerms, hasAcceptedCurrentTerms } from "./lib/consent";
 import type { Fixture, FixtureGroup } from "@/types/fixture";
-import { api, groupFixturesByDate, groupFixturesWithFavouritesFirst } from "./lib/api";
-import { getFavourites, toggleFavourite } from "./lib/favourites";
-import { getSydneyNow, getFixtureStatusInSydney, formatSydneyTime, formatSydneyDate, isPastDate } from "./lib/timezone";
-import { LegalNotice, type LegalMode } from "./components/LegalNotice";
+import { api, groupFixturesByDate, clearCache, groupFixturesWithFavouritesFirst } from "./lib/api";
+import { getFavourites, toggleFavourite, isFavourite } from "./lib/favourites";
+import { getFixtureStatusInSydney, formatSydneyTime, formatSydneyDate, isPastDate } from "./lib/timezone";
 import { fadeUp, fadeIn, EASE, EASE_IN_OUT, DURATION } from "@/lib/motion";
+import { skipWaiting, onUpdateAvailableCb } from "./lib/pwa";
+import { subscribeToPush, unsubscribePush, getAlertLevel, setAlertLevel, isPushSupported, type AlertLevel } from "./lib/push-notifications";
+import { getCachedFixtures, saveFixtures } from "./lib/db";
 import { Card, CardContent } from "./components/ui/Card";
 import { Button } from "./components/ui/Button";
-import { RotateCcw, Info, Search, X, Calendar, Zap, Heart, ChevronDown, Clock } from "lucide-react";
+import {
+  RotateCcw, Info, Search, X, Calendar, Zap, Heart, ChevronDown,
+  Clock, Bell, BellOff, Download, WifiOff, Wifi,
+} from "lucide-react";
 
 export default function App() {
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
@@ -34,6 +41,18 @@ export default function App() {
   const [pastCollapsed, setPastCollapsed] = useState(true);
   const [newEvents, setNewEvents] = useState<Set<number>>(new Set());
   const previousFixturesRef = useRef<Fixture[]>([]);
+  // Track the last known content hash. When unchanged we skip the full data
+  // fetch entirely, saving the ~10-50 KB payload on every poll cycle.
+  // Using a ref avoids stale-closure issues in the useCallback.
+  const lastHashRef = useRef<string | null>(null);
+
+  // ---- PWA state ----
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [usingCachedFixtures, setUsingCachedFixtures] = useState(false);
+  const [pushSupported, setPushSupported] = useState(isPushSupported());
+  const [notificationGranted, setNotificationGranted] = useState(false);
+  const [alertLevel, setAlertLevelState] = useState<AlertLevel>('all');
 
   // LEGAL: first-visit disclaimer/terms gate. `legalMode` distinguishes the
   // blocking first-visit gate from the footer-triggered review dialog.
@@ -41,9 +60,10 @@ export default function App() {
   const [legalMode, setLegalMode] = useState<LegalMode>("gate");
 
   const [favouriteIds, setFavouriteIds] = useState<Set<number>>(() => new Set(getFavourites()));
-
+  
   const refreshFavourites = useCallback(() => {
     setFavouriteIds(new Set(getFavourites()));
+    setFixtures(prev => [...prev]);
   }, []);
   
   useEffect(() => {
@@ -68,39 +88,105 @@ export default function App() {
   }, []);
 
   const mergedFixtures = useMemo(() => {
-    const now = getSydneyNow();
+    const now = new Date();
     return fixtures
       .map((fixture) => {
-        const status = getFixtureStatusInSydney(fixture, now);
+        const status = getFixtureStatusInSydney(fixture);
         const isFav = favouriteIds.has(fixture.id);
         const isNew = newEvents.has(fixture.id);
-        const dateTs = Date.parse(fixture.event_date + 'T' + (fixture.event_time || '00:00'));
         return {
           ...fixture,
           is_favourite: isFav,
           status,
           is_new: isNew,
-          __sortKey: dateTs,
         };
       })
       .sort((a, b) => {
         if (a.is_favourite !== b.is_favourite) {
           return a.is_favourite ? -1 : 1;
         }
-        return a.__sortKey - b.__sortKey;
-      })
-      .map(({ __sortKey, ...rest }) => rest);
+        const dateA = new Date(a.event_date + "T" + (a.event_time || "00:00")).getTime();
+        const dateB = new Date(b.event_date + "T" + (b.event_time || "00:00")).getTime();
+        return dateA - dateB;
+      });
   }, [fixtures, favouriteIds, newEvents]);
 
   const loadData = useCallback(async () => {
     try {
       setError(null);
-      const fixturesRes = await api.getFixtures();
 
-      if (fixturesRes.error) throw new Error(fixturesRes.error);
+      // STEP 0: If offline, try to load from IndexedDB cache so the UI
+      // never shows a blank screen. We still do the hash check in
+      // background to refresh when back online.
+      const isNowOffline = !navigator.onLine;
+      if (isNowOffline && previousFixturesRef.current.length > 0) {
+        setUsingCachedFixtures(true);
+        // Brief loading state so the user knows data is being restored
+        setIsLoading(true);
+        try {
+          const cached = await getCachedFixtures() as Fixture[];
+          if (cached && cached.length > 0) {
+            previousFixturesRef.current = cached;
+            setFixtures(cached);
+            setLastUpdated(new Date());
+            // Update lastHash from cache metadata if available
+            return;
+          }
+        } catch {
+          // Cache unavailable — fall through to error
+        }
+      }
+
+      // STEP 1: Lightweight hash check (~40 bytes response).
+      const hashRes = await api.checkHash();
+      if (hashRes.error) {
+        // If network failed (offline), try to serve cached fixtures
+        if (isNowOffline) {
+          try {
+            const cached = await getCachedFixtures() as Fixture[];
+            if (cached && cached.length > 0) {
+              setUsingCachedFixtures(true);
+              previousFixturesRef.current = cached;
+              setFixtures(cached);
+              setLastUpdated(new Date());
+              return;
+            }
+          } catch { /* ignore */ }
+        }
+        throw new Error(hashRes.error);
+      }
+
+      const currentHash = hashRes.data?.hash;
+
+      // STEP 2: If data is unchanged, skip the full payload fetch.
+      // The UI keeps the already-rendered fixtures; save the ~10-50 KB body.
+      if (currentHash && currentHash === lastHashRef.current) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+
+      // STEP 3: Hash differs (or this is the first load) — fetch full data.
+      const fixturesRes = await api.getFixtures();
+      if (fixturesRes.error) {
+        // If network failed (offline), try to serve cached fixtures
+        if (isNowOffline) {
+          try {
+            const cached = await getCachedFixtures() as Fixture[];
+            if (cached && cached.length > 0) {
+              setUsingCachedFixtures(true);
+              previousFixturesRef.current = cached;
+              setFixtures(cached);
+              setLastUpdated(new Date());
+              return;
+            }
+          } catch { /* ignore */ }
+        }
+        throw new Error(fixturesRes.error);
+      }
 
       const newFixtures = fixturesRes.data || [];
-      
+
       if (previousFixturesRef.current.length > 0) {
         const prevIds = new Set(previousFixturesRef.current.map(f => f.id));
         const newIds = new Set(newFixtures.map(f => f.id));
@@ -109,10 +195,17 @@ export default function App() {
           setNewEvents(new Set(addedIds));
         }
       }
-      
+
       previousFixturesRef.current = newFixtures;
       setFixtures(newFixtures);
       setLastUpdated(new Date());
+      if (currentHash) lastHashRef.current = currentHash;
+      setUsingCachedFixtures(false);
+
+      // Cache fixtures in IndexedDB for offline access
+      if (newFixtures.length > 0) {
+        try { saveFixtures(newFixtures); } catch { /* ignore */ }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load fixtures");
     } finally {
@@ -175,25 +268,14 @@ export default function App() {
   const groups = useMemo(() => groupFixturesWithFavouritesFirst(filteredFixtures), [filteredFixtures]);
 
   const pastGroups = useMemo(() => {
-    if (filter !== "all") return [];
     const pastFixtures = mergedFixtures.filter(f => isPastDate(f.event_date) && f.status === 'completed');
     return groupFixturesByDate(pastFixtures).reverse();
-  }, [mergedFixtures, filter]);
-
-  const counts = useMemo(() => {
-    let upcoming = 0, live = 0, completed = 0;
-    for (const f of mergedFixtures) {
-      if (f.status === "upcoming") upcoming++;
-      else if (f.status === "live") live++;
-      else if (f.status === "completed") completed++;
-    }
-    return { upcoming, live, completed };
   }, [mergedFixtures]);
 
-  const upcomingCount = counts.upcoming;
-  const liveCount = counts.live;
+  const upcomingCount = useMemo(() => mergedFixtures.filter((f) => f.status === "upcoming").length, [mergedFixtures]);
+  const liveCount = useMemo(() => mergedFixtures.filter((f) => f.status === "live").length, [mergedFixtures]);
   // pastCount is shown in the "Past Matches" collapsible label (All view only).
-  const pastCount = counts.completed;
+  const pastCount = useMemo(() => mergedFixtures.filter((f) => f.status === "completed").length, [mergedFixtures]);
   const favouriteCount = favouriteIds.size;
 
   // PERF: search filters within the active tab (no reset to "all") — keeps the
@@ -208,6 +290,87 @@ export default function App() {
 
   const clearNewEvents = useCallback(() => {
     setNewEvents(new Set());
+  }, []);
+
+  // ---- PWA handlers ----
+
+  // Listen for online/offline events
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      // Reload data when back online
+      loadData();
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [loadData]);
+
+  // Subscribe SW update callbacks
+  useEffect(() => {
+    onUpdateAvailableCb(() => setUpdateAvailable(true));
+  }, []);
+
+  // Check notification permission on mount
+  useEffect(() => {
+    const checkPermission = async () => {
+      try {
+        setAlertLevelState(getAlertLevel());
+      } catch {
+        // ignore — SW may not be registered yet
+      }
+    };
+    checkPermission();
+  }, []);
+
+  // Push notification: subscribe button handler
+  const handleSubscribePush = useCallback(async () => {
+    try {
+      await subscribeToPush(alertLevel);
+      setNotificationGranted(true);
+    } catch {
+      // Permission denied or not supported
+      setNotificationGranted(false);
+    }
+  }, [alertLevel]);
+
+  // Push notification: unsubscribe handler
+  const handleUnsubscribePush = useCallback(async () => {
+    try {
+      await unsubscribePush();
+      setNotificationGranted(false);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Push notification: cycle alert level
+  const handleCycleAlerts = useCallback(() => {
+    const levels: AlertLevel[] = ['none', 'live', 'all'];
+    const nextIndex = (levels.indexOf(alertLevel) + 1) % levels.length;
+    const next = levels[nextIndex];
+    setAlertLevelState(next);
+    setAlertLevel(next);
+
+    if (next === 'none') {
+      handleUnsubscribePush();
+    } else {
+      handleSubscribePush();
+    }
+  }, [alertLevel, handleSubscribePush, handleUnsubscribePush]);
+
+  // Download latest version (skip waiting + reload)
+  const handleDownloadUpdate = useCallback(async () => {
+    await skipWaiting();
+    setUpdateAvailable(false);
   }, []);
 
   // LEGAL: persist acceptance locally and dismiss the gate.
@@ -231,6 +394,14 @@ export default function App() {
 
   return (
     <>
+    {/* PWA: Offline indicator — shows at top of viewport */}
+    <OfflineIndicator
+      usingCache={usingCachedFixtures}
+      onRefresh={loadData}
+      dismissed={isOffline}
+      onDismiss={() => {}}
+    />
+
     <div
       className="min-h-screen bg-background"
       aria-hidden={legalGateActive || undefined}
@@ -468,19 +639,55 @@ export default function App() {
           >
             Terms and Disclaimer
           </button>
+
+          {/* PWA: notification toggle — hidden when push is not supported */}
+          {pushSupported && (
+            <motion.button
+              type="button"
+              onClick={handleCycleAlerts}
+              className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              aria-label={`Push notifications: ${alertLevel}`}
+              whileTap={{ scale: 0.95 }}
+            >
+              {alertLevel === 'none' ? (
+                <BellOff className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <Bell className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              <span>
+                {notificationGranted
+                  ? `Alerts: ${alertLevel}`
+                  : 'Enable alerts'}
+              </span>
+            </motion.button>
+          )}
+
+          {/* PWA: version update banner */}
+          {updateAvailable && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadUpdate}
+              className="mt-3 inline-flex items-center gap-1.5 text-xs"
+            >
+              <Download className="h-3.5 w-3.5" aria-hidden="true" />
+              Update available — refresh to install
+            </Button>
+          )}
+
+          {/* PWA: install prompt — rendered below footer */}
+          <InstallPrompt />
         </motion.footer>
       </main>
     </div>
 
       {/* LEGAL: first-visit consent gate (and footer-triggered review). */}
-      <React.Suspense fallback={null}>
-        <LegalNotice
-          open={legalOpen}
-          mode={legalMode}
-          onAccept={handleAcceptTerms}
-          onClose={closeLegalNotice}
-        />
-      </React.Suspense>
+      <LegalNotice
+        open={legalOpen}
+        mode={legalMode}
+        onAccept={handleAcceptTerms}
+        onClose={closeLegalNotice}
+      />
     </>
   );
 }

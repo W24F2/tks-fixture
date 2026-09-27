@@ -4,21 +4,12 @@ from datetime import datetime, timedelta, timezone
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
-
 logger = logging.getLogger(__name__)
 
 try:
     import zoneinfo
-except (KeyError, OSError):
+except (ImportError, KeyError, OSError):
     from backports import zoneinfo  # type: ignore[attr-defined,no-redef,import-untyped]
-
-# PERF: ZoneInfo construction reads the tz database from disk — build it once
-# at import time instead of per row (to_dict used to do it per fixture per
-# request, which dominated /api/fixtures latency on large tables).
-try:
-    SYDNEY_TZ = zoneinfo.ZoneInfo("Australia/Sydney")
-except (KeyError, OSError):
-    SYDNEY_TZ = timezone.utc
 
 class Fixture(db.Model):  # type: ignore[name-defined]
     __tablename__ = 'fixtures'
@@ -36,20 +27,17 @@ class Fixture(db.Model):  # type: ignore[name-defined]
     raw_content = db.Column(db.Text)  # Store original HTML for fallback/debugging
     last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    __table_args__ = ()
-
-    def to_dict(self, now=None):
-        """Serialize the fixture, computing its live/upcoming/completed status.
-
-        `now` (Sydney-aware datetime) may be supplied by the caller so a whole
-        list can share one "current time" instead of per-row clock reads.
-        """
+    def to_dict(self):
         # Determine status based on current time in Sydney
         status = "Scheduled"
         if self.event_date:
-            sydney_tz = SYDNEY_TZ
-            if now is None:
-                now = datetime.now(sydney_tz)
+            try:
+                sydney_tz = zoneinfo.ZoneInfo("Australia/Sydney")
+            except (KeyError, OSError):
+                # Fallback if zoneinfo fails
+                sydney_tz = timezone.utc
+
+            now = datetime.now(sydney_tz)
 
             # Combine date and time for comparison
             # We assume the event_date/time stored in DB are in Sydney time
@@ -72,7 +60,7 @@ class Fixture(db.Model):  # type: ignore[name-defined]
                 else:
                     status = "Finished"
             except (ValueError, AttributeError) as e:
-                logger.warning("Status calculation failed for fixture %s: %s", self.id, e)
+                logger.error("Status calculation failed: %s", e, exc_info=True)
                 status = "Scheduled"
 
         # Map backend status to frontend expected values
@@ -96,6 +84,33 @@ class Fixture(db.Model):  # type: ignore[name-defined]
             "team": self.team,
             "last_updated": self.last_updated.isoformat() if self.last_updated else None,
             "status": frontend_status
+        }
+
+class PushSubscription(db.Model):  # type: ignore[name-defined]
+    __tablename__ = 'push_subscriptions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.String(36), nullable=False)
+    endpoint = db.Column(db.String(500), nullable=False)
+    p256dh = db.Column(db.String(255), nullable=False)
+    auth = db.Column(db.String(255), nullable=False)
+    platform = db.Column(db.String(50))
+    alerts = db.Column(db.String(20), default='all')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint('device_id', 'endpoint', name='uix_device_endpoint'),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "device_id": self.device_id,
+            "endpoint": self.endpoint,
+            "platform": self.platform,
+            "alerts": self.alerts,
+            "created_at": self.created_at.isoformat(),
         }
 
 class Favourite(db.Model):  # type: ignore[name-defined]

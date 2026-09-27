@@ -1,41 +1,50 @@
 {
-  "name": "Sports Fetcher",
-  "short_name": "Sports",
-  "description": "Real-time sports fixtures and updates.",
+  "name": "Sports Fixtures",
+  "short_name": "Sports Fixtures",
+  "description": "Live and upcoming school sports fixtures, results and schedules.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#020617",
+  "display_override": ["window-controls-overlay", "standalone", "fullscreen"],
   "orientation": "portrait-primary",
+  "theme_color": "#020617",
+  "background_color": "#020617",
   "categories": ["sports", "utilities"],
   "icons": [
     {
-      "src": "/static/FS.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "/FS-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "/static/FS.png",
+      "src": "/FS-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/static/FS.png",
-      "sizes": "512x512",
+      "src": "/FS.png",
+      "sizes": "any",
       "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/FS.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ],
   "screenshots": [],
   "shortcuts": [
     {
-      "name": "View Fixtures",
-      "short_name": "Fixtures",
-      "description": "View upcoming sports fixtures",
+      "name": "View All Fixtures",
+      "short_name": "All",
+      "description": "View all upcoming sports fixtures",
       "url": "/",
-      "icons": [{ "src": "/static/FS.svg", "sizes": "192x192" }]
+      "icons": [{ "src": "/FS-192.png", "sizes": "192x192", "type": "image/png" }]
     }
-  ]
+  ],
+  "prefer_related_applications": false
 }
