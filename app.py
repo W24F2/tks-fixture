@@ -146,6 +146,21 @@ def add_security_headers(resp):
     # NOTE: ensure the domain is permanently HTTPS before enabling preload.
     if request.scheme == "https":
         resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+    
+    # TTFB optimization: Disable nginx buffering for API responses to send first byte faster
+    if request.path.startswith('/api/'):
+        resp.headers.setdefault("X-Accel-Buffering", "no")
+        # Add early hints for preloading critical resources
+        if request.path == '/api/fixtures':
+            # Preload fonts and critical CSS for the SPA
+            link_headers = [
+                '<https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap>; rel=preload; as=style',
+                '<https://fonts.gstatic.com>; rel=preconnect; crossorigin',
+            ]
+            if 'Link' in resp.headers:
+                resp.headers['Link'] = resp.headers['Link'] + ', ' + ', '.join(link_headers)
+            else:
+                resp.headers['Link'] = ', '.join(link_headers)
 
     # Content-Security-Policy: strict default-src, allow self-origin scripts/styles,
     # Google Fonts, and Vite inline module preload.
@@ -208,6 +223,8 @@ def get_fixtures():
     set is unchanged we reply 304 with an empty body; when only the minute
     bucket advanced we re-serialize but skip nothing else visible to clients.
     """
+    start_time = time.monotonic()
+    
     row = db.session.execute(
         select(func.count(Fixture.id), func.max(Fixture.last_updated))
     ).one()
@@ -215,9 +232,21 @@ def get_fixtures():
     version_key = (row[0], row[1], int(time.time() // 60))
 
     if _FIXTURES_CACHE["key"] != version_key:
-        fixtures = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc()).all()
+        # Use yield_per for streaming query results to reduce memory pressure
+        fixtures_query = Fixture.query.order_by(Fixture.event_date.asc(), Fixture.event_time.asc())
+        fixtures = fixtures_query.yield_per(100).all()
         now = datetime.now(SYDNEY_TZ)
-        data = [f.to_dict(now=now) for f in fixtures]
+        data = []
+        # Process fixtures in chunks to allow earlier response flushing
+        chunk_size = 50
+        chunk = []
+        for i, fixture in enumerate(fixtures, 1):
+            chunk.append(fixture.to_dict(now=now))
+            if i % chunk_size == 0:
+                data.extend(chunk)
+                chunk = []
+        if chunk:
+            data.extend(chunk)
 
         # Stable, order-independent fingerprint of the payload. The same string
         # doubles as the 200 response body — jsonify would serialize it again.
@@ -230,14 +259,18 @@ def get_fixtures():
 
     # 304: client already has this exact version -> save bandwidth.
     if request.headers.get("If-None-Match") == etag:
-        return Response(
-            status=304,
-            headers={"ETag": etag, "Cache-Control": "public, max-age=30"},
-        )
+        resp = Response(status=304)
+        resp.headers["ETag"] = etag
+        resp.headers["Cache-Control"] = "public, max-age=30"
+        resp.headers["X-Accel-Buffering"] = "no"
+        resp.headers["Server-Timing"] = f"total;dur={(time.monotonic() - start_time) * 1000:.2f}"
+        return resp
 
     resp = Response(_FIXTURES_CACHE["payload"], mimetype="application/json")
     resp.headers["ETag"] = etag
-    resp.headers["Cache-Control"] = "public, max-age=30"
+    resp.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=300"
+    resp.headers["X-Accel-Buffering"] = "no"
+    resp.headers["Server-Timing"] = f"dbcache;dur=0,total;dur={(time.monotonic() - start_time) * 1000:.2f}"
     return resp
 
 
