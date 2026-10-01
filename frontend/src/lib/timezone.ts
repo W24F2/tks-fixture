@@ -52,13 +52,13 @@ export function getFixtureStatusInSydney(
   const [h, mi] = (fixture.event_time || '00:00').split(':').map(Number);
   const eventSydney = new Date(y, m - 1, d, h, mi, 0, 0);
 
-  // Prefer an explicit end_time from the backend; fallback to 3h like before.
+  // Prefer an explicit end_time from the backend; fallback to 2h (matches backend default).
   let endSydney: Date;
   if (fixture.event_end_time) {
     const [eh, em] = fixture.event_end_time.split(':').map(Number);
     endSydney = new Date(y, m - 1, d, eh, em, 0, 0);
   } else {
-    endSydney = new Date(eventSydney.getTime() + 3 * 60 * 60 * 1000);
+    endSydney = new Date(eventSydney.getTime() + 2 * 60 * 60 * 1000);
   }
 
   if (current < eventSydney) return 'upcoming';

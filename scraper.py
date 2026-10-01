@@ -284,7 +284,3 @@ class TrumbaScraper:
         db.session.commit()
         logger.info(f"Scrape complete. New: {new_count}, Updated: {updated_count}")
         return new_count, updated_count
-
-        db.session.commit()
-        logger.info(f"Scrape complete. New: {new_count}, Updated: {updated_count}")
-        return new_count, updated_count
