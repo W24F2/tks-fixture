@@ -247,7 +247,6 @@ class TrumbaScraper:
                 "sport": metadata.get("sport"),
                 "opposition": metadata.get("opposition"),
                 "team": metadata.get("team"),
-                "raw_content": content_html,
             })
             entry_ids.append(external_id)
 
@@ -273,7 +272,6 @@ class TrumbaScraper:
                 fixture.sport = payload["sport"]
                 fixture.opposition = payload["opposition"]
                 fixture.team = payload["team"]
-                fixture.raw_content = payload["raw_content"]
                 # `last_updated` auto-updates via column default
                 updated_count += 1
             else:

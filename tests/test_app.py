@@ -27,9 +27,8 @@ class TestAppEndpoints:
 
     @patch('app.TrumbaScraper')
     def test_refresh_fixtures_error(self, mock_scraper_class, client):
-        import requests
         mock_scraper = MagicMock()
-        mock_scraper.scrape.side_effect = requests.RequestException("Scrape failed")
+        mock_scraper.scrape.side_effect = Exception("Scrape failed")
         mock_scraper_class.return_value = mock_scraper
 
         response = client.post('/api/fixtures/refresh')

@@ -8,8 +8,6 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-import requests
-
 try:
     import zoneinfo
 except (KeyError, OSError):
@@ -112,7 +110,7 @@ def run_scheduled_scrape():
             logger.info(f"Scrape completed. New: {new_count}, Updated: {updated_count}")
             return True
             
-        except (requests.RequestException, ValueError, RuntimeError, SQLAlchemyError) as e:
+        except (ValueError, RuntimeError, SQLAlchemyError, OperationalError) as e:
             logger.error(f"Scrape failed: {e}")
             return False
 
